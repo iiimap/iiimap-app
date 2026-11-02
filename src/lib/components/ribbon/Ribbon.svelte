@@ -13,7 +13,7 @@
 
   let { engine }: { engine?: MapEngine } = $props();
 
-  const VERSION = 'v0.15';
+  const VERSION = 'v0.16';
   const SAVE_TEXT = { saved: 'บันทึกแล้ว', saving: 'กำลังบันทึก…', error: 'บันทึกไม่สำเร็จ' };
 
   const TABS = [
@@ -130,8 +130,8 @@
         </RGroup>
       {/if}
     {:else if app.ribbonTab === 'line'}
-      <RGroup label={app.draft ? 'กำลังสร้างไลน์' : 'ไลน์'}>
-        {#if app.draft}
+      <RGroup label={app.draftLineId ? 'กำลังสร้างไลน์' : 'ไลน์'}>
+        {#if app.draftLineId}
           <RButton size="large" icon="check" label="บันทึก" title="บันทึกไลน์ที่สร้าง" onclick={() => actions.saveDraft()} />
           <RButton size="large" icon="close" label="ยกเลิก" title="ยกเลิกการสร้างไลน์" onclick={() => actions.cancelDraft()} />
         {:else}
@@ -144,7 +144,7 @@
         {:else}
           <div class="chips">
             {#each app.site.lines as l (l.id)}
-              <button class="chip" class:on={app.activeLineId === l.id} style="--c:{l.color}" disabled={!!app.draft}
+              <button class="chip" class:on={app.activeLineId === l.id} class:draft={app.draftLineId === l.id} style="--c:{l.color}"
                 title="{l.name} · {l.mode === 'byLine' ? 'ByLine' : 'ByStation'}"
                 onclick={() => { app.activeLineId = app.activeLineId === l.id ? null : l.id; app.lineAddMode = null; }}>
                 <i></i><span>{l.name}</span><b>{lineCount[l.id] ?? 0}</b>
@@ -240,7 +240,8 @@
   }
   .chip:hover:not(:disabled) { background: #f8fafc; border-color: var(--c); }
   .chip.on { background: color-mix(in srgb, var(--c) 14%, white); border-color: var(--c); font-weight: 600; }
-  .chip:disabled { opacity: 0.45; cursor: default; }
+  .chip.draft { border-style: dashed; border-left-style: solid; }
+  .chip.draft::after { content: 'ยังไม่บันทึก'; font-size: 10px; font-weight: 500; color: #b45309; background: #fef3c7; border-radius: 999px; padding: 0 6px; }
   .chip i { display: none; }
   .chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .chip b { font-size: 11px; font-weight: 600; color: #475569; background: #f1f5f9; border-radius: 999px; padding: 0 6px; }

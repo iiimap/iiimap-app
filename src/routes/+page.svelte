@@ -15,6 +15,12 @@
   // ใช้ e.code = ตำแหน่งปุ่มจริง จึงใช้ได้แม้คีย์บอร์ดเป็นภาษาไทย
   function onKey(e: KeyboardEvent) {
     const t = e.target as HTMLElement;
+    // ในช่องพิมพ์: Enter = เสร็จสิ้นการแก้ไข (ออกจากช่อง → บันทึกค่าและลงประวัติย้อนกลับ)
+    if (t instanceof HTMLInputElement && t.type !== 'checkbox' && (e.code === 'Enter' || e.code === 'NumpadEnter')) {
+      e.preventDefault();
+      t.blur();
+      return;
+    }
     if (t.closest('input, select, textarea')) return;
 
     if (e.code === 'Escape') {

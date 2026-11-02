@@ -36,7 +36,7 @@
   <div class="scroll">
     <section>
       <h4>สถานะและสี</h4>
-      <p class="hint">ตั้งชื่อและสีได้ตามมาตรฐานของโรงงาน · <b>ระดับ 1–9</b> ยิ่งสูงยิ่งร้ายแรง ใช้ตัดสินสีรวมของไลน์แบบ ByLine</p>
+      <p class="hint">ตั้งชื่อและสีได้ตามมาตรฐานของโรงงาน · <b>ระดับ 0–9</b> (0 = ปกติ) ยิ่งสูงยิ่งร้ายแรง ใช้ตัดสินสีรวมของไลน์แบบ ByLine</p>
 
       <div class="states">
         <div class="row th"><span>สี</span><span>ความหมาย</span><span>ระดับ</span><span></span></div>
@@ -50,7 +50,7 @@
               <span class="sys" title="สถานะของระบบ: ใช้เมื่อเครื่องขาดการเชื่อมต่อ ไม่มีระดับ ลบไม่ได้ และไม่นับในสีรวมของไลน์ (ยกเว้นทั้งไลน์ขาดการเชื่อมต่อหมด)">🔒 ระบบ</span>
               <span></span>
             {:else}
-              <input class="num" type="number" min="1" max="9" step="1" value={st.severity} disabled={!editable}
+              <input class="num" type="number" min="0" max="9" step="1" value={st.severity} disabled={!editable}
                 onchange={(e) => { actions.setSeverity(st.id, +e.currentTarget.value); e.currentTarget.value = String(st.severity); }} />
               {#if editable}
                 <button class="icon" title={usedBy[st.id] ? `ลบ (เครื่อง ${usedBy[st.id]} ตัวจะกลับเป็นสถานะระดับต่ำสุด)` : 'ลบ'}

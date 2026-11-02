@@ -8,17 +8,7 @@ import { loadLocal, saveLocal } from './persist';
 export type Mode = 'view' | 'edit';
 export type RibbonTab = 'home' | 'insert' | 'line' | 'andon' | 'view';
 
-/** ไลน์ที่กำลังสร้าง: ยังไม่เข้าผังจนกว่าจะกดบันทึก */
-export interface LineDraft {
-  name: string;
-  color: string;
-  mode: LineMode;
-  members: string[]; // id ของเครื่อง
-  error: string;
-}
 
-/** ใช้กับ lineAddMode เมื่อกำลังเลือกเครื่องให้ไลน์ที่ยังไม่บันทึก */
-export const DRAFT = '__draft__';
 
 function loadRecent(): string[] {
   try {
@@ -43,24 +33,53 @@ export const app = $state({
   recent: loadRecent(), // โมเดลที่ใช้ล่าสุด (สูงสุด 6)
   ribbonTab: 'insert' as RibbonTab,
   activeLineId: null as string | null, // ไลน์ที่กำลังดู (ไฮไลต์สมาชิกทั้งหมด)
-  lineAddMode: null as string | null, // โหมด "คลิกบนผังเพื่อเพิ่มเข้าไลน์นี้" (DRAFT = ไลน์ที่กำลังสร้าง)
-  draft: null as LineDraft | null, // ไลน์ที่กำลังสร้าง (ยังไม่บันทึก)
+  lineAddMode: null as string | null, // โหมด "คลิกบนผังเพื่อเพิ่มเข้าไลน์นี้"
+  draftLineId: null as string | null, // ไลน์ที่เพิ่งสร้าง ยังไม่ได้กดบันทึก
+  draftError: '',
   saveState: 'saved' as 'saved' | 'saving' | 'error'
 });
+
+// ================= ไลน์ที่ยังไม่บันทึก =================
+// ตอนกดสร้างไลน์ ไลน์ใหม่จะขึ้นในรายการทันที แต่ยังไม่นับว่าบันทึก
+// - ระหว่างนี้แก้ชื่อ สี โหมด และเลือกเครื่องได้ตามปกติ
+// - กดบันทึก = เข้าผังจริง (ย้อนกลับได้ 1 ขั้น)
+// - กดยกเลิก = ไลน์หาย เครื่องกลับไปไลน์เดิม
+let draftSnapshot: string | null = null; // สถานะก่อนเริ่มสร้าง (ใช้ลงประวัติตอนบันทึก)
+let draftOrigin: Record<string, string | null> = {}; // ไลน์เดิมของเครื่องที่ถูกดึงเข้าไลน์ใหม่
+
+/** ผังที่ไม่มีไลน์ที่ยังไม่บันทึก (ใช้ตอนบันทึกอัตโนมัติ) */
+function withoutDraft(site: Site): Site {
+  const id = app.draftLineId;
+  if (!id) return site;
+  return {
+    ...site,
+    lines: site.lines.filter((l) => l.id !== id),
+    assets: site.assets.map((a) => (a.lineId === id ? { ...a, lineId: draftOrigin[a.id] ?? null } : a))
+  };
+}
+
+const isDraft = (lineId: string | null) => !!lineId && lineId === app.draftLineId;
+
+function clearDraft() {
+  app.draftLineId = null;
+  app.draftError = '';
+  draftSnapshot = null;
+  draftOrigin = {};
+}
 
 // ================= บันทึกอัตโนมัติ =================
 // แก้ผังเมื่อไหร่ รอ 0.5 วินาทีหลังแก้ครั้งสุดท้ายแล้วค่อยบันทึก
 let saveTimer: ReturnType<typeof setTimeout> | undefined;
-let lastSaved = JSON.stringify(app.site);
+let lastSaved = JSON.stringify(app.site); // ตอนเปิดแอปยังไม่มีไลน์ร่าง
 
 $effect.root(() => {
   $effect(() => {
-    const json = JSON.stringify(app.site); // อ่านทุกค่าในผัง = ติดตามทุกการเปลี่ยนแปลง
+    const json = JSON.stringify(withoutDraft(app.site)); // อ่านทุกค่าในผัง = ติดตามทุกการเปลี่ยนแปลง
     if (json === lastSaved) return;
     app.saveState = 'saving';
     clearTimeout(saveTimer);
     saveTimer = setTimeout(() => {
-      const ok = saveLocal(app.site);
+      const ok = saveLocal(JSON.parse(json));
       if (ok) lastSaved = json;
       app.saveState = ok ? 'saved' : 'error';
     }, 500);
@@ -88,8 +107,8 @@ function restore(json: string) {
   app.site.metrics = s.metrics;
   if (!app.site.assets.some((a) => a.id === app.selectedId)) app.selectedId = null;
   if (!app.site.lines.some((l) => l.id === app.activeLineId)) app.activeLineId = null;
-  if (app.lineAddMode !== DRAFT && !app.site.lines.some((l) => l.id === app.lineAddMode)) app.lineAddMode = null;
-  if (app.draft) app.draft.members = app.draft.members.filter((id) => app.site.assets.some((a) => a.id === id));
+  if (!app.site.lines.some((l) => l.id === app.lineAddMode)) app.lineAddMode = null;
+  if (app.draftLineId && !app.site.lines.some((l) => l.id === app.draftLineId)) clearDraft();
   app.hoverId = null;
 }
 
@@ -161,7 +180,7 @@ function replaceSite(site: Site) {
   app.placing = null;
   app.activeLineId = null;
   app.lineAddMode = null;
-  app.draft = null;
+  clearDraft();
   history.past = [];
   history.future = [];
   clipboard = null;
@@ -331,66 +350,76 @@ export const actions = {
   },
 
   // ---------- Line ----------
-  // ---------- สร้างไลน์ใหม่ (ร่าง → บันทึก) ----------
+  // ---------- สร้างไลน์ใหม่ (ยังไม่บันทึก → บันทึก / ยกเลิก) ----------
   startDraft() {
+    if (app.draftLineId) return;
+    draftSnapshot = snapshot();
+    draftOrigin = {};
     let n = app.site.lines.length + 1;
     while (app.site.lines.some((l) => l.name === `Line ${n}`)) n++;
-    app.draft = {
+    const id = newId('ln');
+    app.site.lines.push({
+      id,
       name: `Line ${n}`,
-      color: LINE_COLORS[app.site.lines.length % LINE_COLORS.length],
       mode: 'byLine',
-      members: [],
-      error: ''
-    };
-    app.activeLineId = null;
-    app.lineAddMode = null;
+      color: LINE_COLORS[app.site.lines.length % LINE_COLORS.length]
+    });
+    app.draftLineId = id;
+    app.draftError = '';
+    app.activeLineId = id;
+    app.lineAddMode = id; // พร้อมคลิกเลือกเครื่องบนผังทันที
     app.ribbonTab = 'line';
   },
 
-  draftToggle(assetId: string) {
-    const d = app.draft;
-    if (!d) return;
-    d.members = d.members.includes(assetId) ? d.members.filter((x) => x !== assetId) : [...d.members, assetId];
-    d.error = '';
-  },
-
-  /** บันทึกไลน์ที่สร้าง: ลงผังพร้อมสมาชิกทั้งหมดในครั้งเดียว (ย้อนกลับได้ 1 ขั้น) */
+  /** บันทึกไลน์ใหม่: ตรวจชื่อ แล้วลงประวัติเป็นขั้นเดียว */
   saveDraft(): boolean {
-    const d = app.draft;
-    if (!d) return false;
-    const name = d.name.trim();
+    const line = app.draftLineId ? findLine(app.draftLineId) : undefined;
+    if (!line) return false;
+    const name = line.name.trim();
     if (!name) {
-      d.error = 'กรุณาตั้งชื่อไลน์';
+      app.draftError = 'กรุณาตั้งชื่อไลน์';
       return false;
     }
-    if (app.site.lines.some((l) => l.name.trim() === name)) {
-      d.error = `มีไลน์ชื่อ "${name}" อยู่แล้ว`;
+    if (app.site.lines.some((l) => l.id !== line.id && l.name.trim() === name)) {
+      app.draftError = `มีไลน์ชื่อ "${name}" อยู่แล้ว`;
       return false;
     }
-    checkpoint();
-    const id = newId('ln');
-    app.site.lines.push({ id, name, mode: d.mode, color: d.color });
-    for (const a of app.site.assets) if (d.members.includes(a.id)) a.lineId = id;
-    app.draft = null;
+    line.name = name;
+    if (draftSnapshot !== null) {
+      history.past.push(draftSnapshot);
+      if (history.past.length > HISTORY_LIMIT) history.past.shift();
+      history.future = [];
+    }
     app.lineAddMode = null;
-    app.activeLineId = id;
+    clearDraft();
     return true;
   },
 
+  /** ยกเลิก: ไลน์หาย เครื่องที่ถูกดึงมากลับไลน์เดิม */
   cancelDraft() {
-    app.draft = null;
-    if (app.lineAddMode === DRAFT) app.lineAddMode = null;
+    const id = app.draftLineId;
+    if (!id) return;
+    for (const a of app.site.assets) {
+      if (a.lineId !== id) continue;
+      const orig = draftOrigin[a.id] ?? null;
+      a.lineId = orig && findLine(orig) ? orig : null;
+    }
+    app.site.lines = app.site.lines.filter((l) => l.id !== id);
+    if (app.activeLineId === id) app.activeLineId = null;
+    if (app.lineAddMode === id) app.lineAddMode = null;
+    clearDraft();
   },
 
   setLineMode(id: string, mode: LineMode) {
     const l = findLine(id);
     if (!l || l.mode === mode) return;
-    checkpoint();
+    if (!isDraft(id)) checkpoint();
     l.mode = mode;
   },
 
   deleteLine(id: string) {
     if (!findLine(id)) return;
+    if (isDraft(id)) return actions.cancelDraft();
     checkpoint();
     app.site.lines = app.site.lines.filter((l) => l.id !== id);
     for (const a of app.site.assets) if (a.lineId === id) a.lineId = null;
@@ -402,13 +431,25 @@ export const actions = {
   addToLine(assetId: string, lineId: string) {
     const a = find(assetId);
     if (!a || !findLine(lineId) || a.lineId === lineId) return;
-    checkpoint();
+    if (isDraft(lineId)) {
+      // จำไลน์เดิมไว้ เผื่อกดยกเลิก
+      if (!(a.id in draftOrigin)) draftOrigin[a.id] = a.lineId;
+    } else {
+      checkpoint();
+    }
     a.lineId = lineId;
   },
 
   removeFromLine(assetId: string) {
     const a = find(assetId);
     if (!a || !a.lineId) return;
+    if (isDraft(a.lineId)) {
+      // เอาออกจากไลน์ที่ยังไม่บันทึก = กลับไลน์เดิม
+      const orig = draftOrigin[a.id] ?? null;
+      a.lineId = orig && findLine(orig) ? orig : null;
+      delete draftOrigin[a.id];
+      return;
+    }
     checkpoint();
     a.lineId = null;
   },
@@ -432,7 +473,7 @@ export const actions = {
     else app.site.andonStates.splice(at, 0, st);
   },
 
-  /** ตั้งระดับ (จำนวนเต็ม 1–9) สถานะของระบบตั้งไม่ได้ */
+  /** ตั้งระดับ (จำนวนเต็ม 0–9) สถานะของระบบตั้งไม่ได้ */
   setSeverity(id: string, value: number) {
     const st = app.site.andonStates.find((s) => s.id === id);
     if (!st || st.system) return;
@@ -485,6 +526,8 @@ export const actions = {
 
   // ---------- Undo / Redo ----------
   undo() {
+    // ระหว่างสร้างไลน์ใหม่: ย้อนกลับ = ยกเลิกไลน์ที่ยังไม่บันทึก
+    if (app.draftLineId) return actions.cancelDraft();
     const prev = history.past.pop();
     if (prev === undefined) return;
     history.future.push(snapshot());
@@ -492,6 +535,7 @@ export const actions = {
   },
 
   redo() {
+    if (app.draftLineId) return;
     const next = history.future.pop();
     if (next === undefined) return;
     history.past.push(snapshot());

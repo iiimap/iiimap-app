@@ -1,7 +1,7 @@
 <script lang="ts">
   // แผงตั้งค่าไลน์: ตั้งชื่อไลน์ก่อน แล้วเลือกเครื่องเข้าไลน์ตามชื่อ
   import { MODELS, MODE_LABEL } from '../../domain/catalog';
-  import { app, actions, andonColors, DRAFT } from '../../stores/site.svelte';
+  import { app, actions, andonColors } from '../../stores/site.svelte';
 
   const MODES = ['byLine', 'byStation'] as const;
   let editable = $derived(app.mode === 'edit');
@@ -13,19 +13,15 @@
 
   const lineName = (id: string | null) => app.site.lines.find((l) => l.id === id)?.name ?? '';
 
-  // ผลค้นหาเครื่องที่จะเพิ่ม (ไม่รวมที่อยู่ในไลน์นี้แล้ว)
-  let candidates = $derived(
-    app.activeLineId
-      ? app.site.assets
-          .filter((a) => a.lineId !== app.activeLineId)
-          .filter((a) => {
-            const q = query.trim().toLowerCase();
-            return !q || a.name.toLowerCase().includes(q) || (MODELS[a.kind]?.label ?? '').toLowerCase().includes(q);
-          })
-          .sort((a, b) => Number(!!a.lineId) - Number(!!b.lineId) || a.name.localeCompare(b.name, 'th'))
-          .slice(0, 8)
-      : []
-  );
+  // ผลค้นหาเครื่องที่จะเพิ่มเข้าไลน์ (ไม่รวมที่อยู่ในไลน์นี้แล้ว)
+  function candidatesFor(lineId: string) {
+    const q = query.trim().toLowerCase();
+    return app.site.assets
+      .filter((a) => a.lineId !== lineId)
+      .filter((a) => !q || a.name.toLowerCase().includes(q) || (MODELS[a.kind]?.label ?? '').toLowerCase().includes(q))
+      .sort((a, b) => Number(!!a.lineId) - Number(!!b.lineId) || a.name.localeCompare(b.name, 'th'))
+      .slice(0, 8);
+  }
 
   function toggleOpen(id: string) {
     app.activeLineId = app.activeLineId === id ? null : id;
@@ -33,92 +29,26 @@
     query = '';
   }
 
-  // ---------- ไลน์ที่กำลังสร้าง ----------
-  let dquery = $state('');
-  let draftMembers = $derived(
-    app.draft ? app.draft.members.map((id) => app.site.assets.find((a) => a.id === id)).filter((a) => !!a) : []
-  );
-  let draftCands = $derived(
-    app.draft
-      ? app.site.assets
-          .filter((a) => !app.draft!.members.includes(a.id))
-          .filter((a) => {
-            const q = dquery.trim().toLowerCase();
-            return !q || a.name.toLowerCase().includes(q) || (MODELS[a.kind]?.label ?? '').toLowerCase().includes(q);
-          })
-          .sort((a, b) => Number(!!a.lineId) - Number(!!b.lineId) || a.name.localeCompare(b.name, 'th'))
-          .slice(0, 8)
-      : []
-  );
-
   function create() {
     actions.startDraft();
-    dquery = '';
+    query = '';
   }
+
+  // ไลน์ที่ยังไม่บันทึกแสดงไว้บนสุด
+  let ordered = $derived([...app.site.lines].sort((a, b) => Number(b.id === app.draftLineId) - Number(a.id === app.draftLineId)));
+
+  // แก้ไลน์ที่ยังไม่บันทึก ไม่ต้องลงประวัติทีละช่อง (ลงครั้งเดียวตอนกดบันทึก)
+  const begin = (id: string) => id !== app.draftLineId && actions.beginEdit();
+  const commit = (id: string) => id !== app.draftLineId && actions.commitEdit();
 </script>
 
 <aside class="panel">
   <header>
     <h3>ไลน์ผลิต <span class="count">{app.site.lines.length}</span></h3>
-    {#if editable && !app.draft}
+    {#if editable && !app.draftLineId}
       <button class="primary" onclick={create}>+ สร้างไลน์</button>
     {/if}
   </header>
-
-  {#if app.draft}
-    <section class="draft" style="--c:{app.draft.color}">
-      <h4 class="dt">สร้างไลน์ใหม่ <span>ยังไม่บันทึก</span></h4>
-      <div class="head">
-        <input class="swatch" type="color" bind:value={app.draft.color} title="สีประจำไลน์" />
-        <input class="name boxed" bind:value={app.draft.name} placeholder="ชื่อไลน์ เช่น Line A" oninput={() => (app.draft!.error = '')} />
-      </div>
-      <div class="modes" role="group" aria-label="โหมด Andon">
-        {#each MODES as m}
-          <button class:on={app.draft.mode === m} onclick={() => (app.draft!.mode = m)}>{MODE_LABEL[m]}</button>
-        {/each}
-      </div>
-
-      <h4>เครื่องในไลน์ ({draftMembers.length})</h4>
-      <ul class="members">
-        {#each draftMembers as a (a!.id)}
-          <li>
-            <span class="dot" style="background:{a!.andon ? colors[a!.id] : 'transparent'}; border-color:{a!.andon ? colors[a!.id] : '#cbd5e1'}"></span>
-            <b class="mname">{a!.name}</b>
-            <small>{MODELS[a!.kind]?.label ?? a!.kind}{a!.lineId ? ` · ย้ายจาก ${lineName(a!.lineId)}` : ''}</small>
-            <button class="icon x" title="เอาออก" onclick={() => actions.draftToggle(a!.id)}>×</button>
-          </li>
-        {/each}
-      </ul>
-
-      <input class="search" bind:value={dquery} placeholder="พิมพ์ชื่อเครื่องเพื่อเพิ่ม เช่น CNC-01" />
-      {#if draftCands.length}
-        <ul class="cands">
-          {#each draftCands as a (a.id)}
-            <li>
-              <button onclick={() => actions.draftToggle(a.id)}>
-                <b>{a.name}</b>
-                <small>{MODELS[a.kind]?.label ?? a.kind}</small>
-                {#if a.lineId}<em>อยู่ใน {lineName(a.lineId)}</em>{:else}<span class="plus">+</span>{/if}
-              </button>
-            </li>
-          {/each}
-        </ul>
-      {:else if app.site.assets.length === 0}
-        <p class="hint">ยังไม่มีเครื่องบนผัง วางโมเดลจากแท็บแทรกก่อน</p>
-      {/if}
-
-      <button class="pick" class:on={app.lineAddMode === DRAFT}
-        onclick={() => (app.lineAddMode = app.lineAddMode === DRAFT ? null : DRAFT)}>
-        {app.lineAddMode === DRAFT ? '✓ กำลังเลือกบนผัง… (กดอีกครั้งหรือ Esc เพื่อจบ)' : '⌖ คลิกเลือกเครื่องบนผัง'}
-      </button>
-
-      {#if d.error}<p class="error">{d.error}</p>{/if}
-      <div class="savebar">
-        <button class="ghostbtn" onclick={() => actions.cancelDraft()}>ยกเลิก</button>
-        <button class="primary" onclick={() => actions.saveDraft()}>บันทึกไลน์</button>
-      </div>
-    </section>
-  {/if}
 
   {#if app.site.lines.length === 0}
     <p class="empty">
@@ -128,22 +58,28 @@
   {/if}
 
   <div class="list">
-    {#each app.site.lines as line (line.id)}
+    {#each ordered as line (line.id)}
       {@const members = membersOf(line.id)}
-      {@const open = app.activeLineId === line.id}
-      <section class="line" class:open style="--c:{line.color}">
+      {@const isNew = app.draftLineId === line.id}
+      {@const open = app.activeLineId === line.id || isNew}
+      {@const candidates = open ? candidatesFor(line.id) : []}
+      <section class="line" class:open class:isnew={isNew} style="--c:{line.color}">
+        {#if isNew}<div class="newtag">ไลน์ใหม่ · ยังไม่บันทึก</div>{/if}
         <div class="head">
           <input class="swatch" type="color" bind:value={line.color} disabled={!editable}
-            onfocus={() => actions.beginEdit()} onchange={() => actions.commitEdit()} title="สีประจำไลน์" />
+            onfocus={() => begin(line.id)} onchange={() => commit(line.id)} title="สีประจำไลน์" />
           {#if editable}
-            <input class="name" bind:value={line.name} onfocus={() => actions.beginEdit()} onchange={() => actions.commitEdit()} />
+            <input class="name" class:boxed={isNew} bind:value={line.name} placeholder="ชื่อไลน์"
+              onfocus={() => begin(line.id)} onchange={() => commit(line.id)} oninput={() => (app.draftError = '')} />
           {:else}
             <span class="name ro">{line.name}</span>
           {/if}
           <span class="badge">{members.length}</span>
-          <button class="icon" title={open ? 'ปิด' : 'ดูไลน์นี้ (ไฮไลต์ทุกเครื่องในไลน์)'} onclick={() => toggleOpen(line.id)}>
-            {open ? '▴' : '▾'}
-          </button>
+          {#if !isNew}
+            <button class="icon" title={open ? 'ปิด' : 'ดูไลน์นี้ (ไฮไลต์ทุกเครื่องในไลน์)'} onclick={() => toggleOpen(line.id)}>
+              {open ? '▴' : '▾'}
+            </button>
+          {/if}
         </div>
 
         {#if open}
@@ -199,7 +135,15 @@
                 {app.lineAddMode === line.id ? '✓ กำลังเลือกบนผัง… (กดอีกครั้งหรือ Esc เพื่อจบ)' : '⌖ คลิกเลือกเครื่องบนผัง'}
               </button>
 
-              <button class="danger" onclick={() => actions.deleteLine(line.id)}>ลบไลน์นี้</button>
+              {#if isNew}
+                {#if app.draftError}<p class="error">{app.draftError}</p>{/if}
+                <div class="savebar">
+                  <button class="ghostbtn" onclick={() => actions.cancelDraft()}>ยกเลิก</button>
+                  <button class="primary" onclick={() => actions.saveDraft()}>บันทึกไลน์</button>
+                </div>
+              {:else}
+                <button class="danger" onclick={() => actions.deleteLine(line.id)}>ลบไลน์นี้</button>
+              {/if}
             {/if}
           </div>
         {/if}
@@ -222,12 +166,9 @@
   .empty { margin: 20px 16px; font-size: 13px; line-height: 1.7; color: #64748b; text-align: center; }
   .list { overflow-y: auto; padding: 8px; display: flex; flex-direction: column; gap: 6px; }
 
-  .draft { margin: 8px; padding: 10px; border: 2px dashed var(--c); border-radius: 10px; display: flex; flex-direction: column; gap: 6px; background: color-mix(in srgb, var(--c) 4%, white); }
-  .dt { margin: 0 0 2px; font-size: 12.5px; color: #0f172a; }
-  .dt span { font-weight: 500; font-size: 11px; color: #b45309; background: #fef3c7; border-radius: 999px; padding: 1px 7px; margin-left: 4px; }
-  .draft .head { padding: 0; }
+  .line.isnew { border-style: dashed; border-left-style: solid; background: color-mix(in srgb, var(--c) 4%, white); }
+  .newtag { margin: 6px 8px 0; align-self: flex-start; display: inline-block; font-size: 10.5px; font-weight: 600; color: #b45309; background: #fef3c7; border-radius: 999px; padding: 1px 8px; }
   .boxed { border-color: #e2e8f0 !important; background: #fff !important; }
-  .mname { font-size: 13px; color: #0f172a; }
   .error { margin: 0; font-size: 12px; color: #dc2626; }
   .savebar { display: flex; justify-content: flex-end; gap: 6px; margin-top: 4px; }
   .ghostbtn { border: 1px solid #e2e8f0; background: #fff; color: #334155; border-radius: 7px; padding: 6px 12px; font: 12px system-ui, sans-serif; cursor: pointer; }

@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
   import { MapEngine } from '../map-engine/MapEngine';
   import { footprint } from '../domain/geometry';
-  import { app, actions, andonColors, DRAFT } from '../stores/site.svelte';
+  import { app, actions, andonColors } from '../stores/site.svelte';
 
   let { engine = $bindable() }: { engine?: MapEngine } = $props();
   let container: HTMLDivElement;
@@ -12,8 +12,7 @@
       onSelect: (id) => {
         // โหมดเพิ่มสมาชิกไลน์: คลิกเครื่อง = เพิ่ม/เอาออกจากไลน์ แทนการเลือก
         if (app.lineAddMode) {
-          if (id && app.lineAddMode === DRAFT) actions.draftToggle(id);
-          else if (id) actions.toggleMember(id, app.lineAddMode);
+          if (id) actions.toggleMember(id, app.lineAddMode);
           return;
         }
         app.selectedId = id;
@@ -56,12 +55,8 @@
     engine?.setGridVisible(app.showGrid);
   });
 
-  // ไฮไลต์สมาชิกของไลน์ที่กำลังสร้าง หรือไลน์ที่กำลังดู
+  // ไฮไลต์สมาชิกของไลน์ที่กำลังดู (รวมไลน์ที่เพิ่งสร้าง)
   $effect(() => {
-    if (app.draft) {
-      engine?.setHighlighted([...app.draft.members], app.draft.color);
-      return;
-    }
     const line = app.site.lines.find((l) => l.id === app.activeLineId);
     const ids = line ? app.site.assets.filter((a) => a.lineId === line.id).map((a) => a.id) : [];
     engine?.setHighlighted(ids, line?.color ?? '#7c3aed');
@@ -70,12 +65,8 @@
   // กรอบไลน์อัตโนมัติ: ล้อมสมาชิกทุกตัว + เผื่อขอบ 0.5 ม.
   $effect(() => {
     const groups = app.site.lines
-      .filter((l) => app.showLineFrames || (!app.draft && l.id === app.activeLineId))
-      .map((l) => ({ color: l.color, strong: !app.draft && l.id === app.activeLineId, members: app.site.assets.filter((a) => a.lineId === l.id) }));
-    if (app.draft) {
-      const ids = new Set(app.draft.members);
-      groups.push({ color: app.draft.color, strong: true, members: app.site.assets.filter((a) => ids.has(a.id)) });
-    }
+      .filter((l) => app.showLineFrames || l.id === app.activeLineId)
+      .map((l) => ({ color: l.color, strong: l.id === app.activeLineId, members: app.site.assets.filter((a) => a.lineId === l.id) }));
     const frames = groups
       .map(({ color, strong, members }) => {
         if (!members.length) return null;
