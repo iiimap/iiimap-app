@@ -1,14 +1,79 @@
 <script lang="ts">
   import MapCanvas from '../lib/components/MapCanvas.svelte';
-  import AssetPanel from '../lib/components/AssetPanel.svelte';
+  import Ribbon from '../lib/components/ribbon/Ribbon.svelte';
+  import StatusBar from '../lib/components/StatusBar.svelte';
+  import Properties from '../lib/components/Properties.svelte';
+  import Labels from '../lib/components/Labels.svelte';
+  import type { MapEngine } from '../lib/map-engine/MapEngine';
+  import { app, actions } from '../lib/stores/site.svelte';
+
+  let engine = $state<MapEngine>();
+
+  // คีย์ลัด (ไม่ทำงานตอนพิมพ์ในช่องกรอก)
+  // ใช้ e.code = ตำแหน่งปุ่มจริง จึงใช้ได้แม้คีย์บอร์ดเป็นภาษาไทย
+  function onKey(e: KeyboardEvent) {
+    const t = e.target as HTMLElement;
+    if (t.closest('input, select, textarea')) return;
+
+    if (e.code === 'Escape') {
+      if (app.placing) app.placing = null;
+      else app.selectedId = null;
+    }
+    if (app.mode !== 'edit') return;
+
+    const mod = e.ctrlKey || e.metaKey; // Ctrl (Windows) หรือ ⌘ (Mac)
+    if (mod) {
+      switch (e.code) {
+        case 'KeyZ':
+          e.preventDefault();
+          if (e.shiftKey) actions.redo();
+          else actions.undo();
+          return;
+        case 'KeyY':
+          e.preventDefault();
+          actions.redo();
+          return;
+        case 'KeyC':
+          e.preventDefault();
+          actions.copy();
+          return;
+        case 'KeyX':
+          e.preventDefault();
+          actions.cut();
+          return;
+        case 'KeyV':
+          e.preventDefault();
+          actions.paste();
+          return;
+      }
+      return;
+    }
+
+    if (e.code === 'KeyR') {
+      if (app.placing) app.placeRot = (app.placeRot + 1) % 4;
+      else if (app.selectedId) actions.rotate(app.selectedId);
+    }
+    if ((e.code === 'Delete' || e.code === 'Backspace') && app.selectedId) {
+      e.preventDefault();
+      actions.remove(app.selectedId);
+    }
+  }
 </script>
 
+<svelte:window onkeydown={onKey} />
+
 <main>
-  <MapCanvas />
-  <AssetPanel />
+  <Ribbon {engine} />
+  <div class="stage">
+    <MapCanvas bind:engine />
+    <Labels {engine} />
+    <Properties />
+  </div>
+  <StatusBar {engine} />
 </main>
 
 <style>
-  :global(body) { margin: 0; background: #070b12; }
-  main { position: fixed; inset: 0; overflow: hidden; }
+  :global(body) { margin: 0; background: #f4f6f9; }
+  main { position: fixed; inset: 0; display: flex; flex-direction: column; overflow: hidden; }
+  .stage { position: relative; flex: 1; min-height: 0; overflow: hidden; }
 </style>

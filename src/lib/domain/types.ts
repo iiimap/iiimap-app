@@ -1,16 +1,19 @@
 // โครงข้อมูลหลักของ iiiMap: Tenant → Site → Area → Asset
 export type AssetStatus = 'running' | 'idle' | 'alarm' | 'offline';
-export type AssetKind = 'machine' | 'conveyor' | 'station' | 'dock';
+
+/** id ของโมเดลใน MODELS (catalog.ts) เช่น 'cnc', 'conveyor' */
+export type AssetKind = string;
 
 export interface Asset {
   id: string;
   name: string;
   kind: AssetKind;
-  areaId: string;
-  x: number; // ตำแหน่งบนผัง (เมตร)
+  areaId: string | null;
+  x: number; // ตำแหน่งกึ่งกลางบนผัง (เมตร)
   z: number;
-  w: number; // ขนาด
-  d: number;
+  w: number; // ความกว้าง (แกน x ก่อนหมุน)
+  d: number; // ความลึก (แกน z ก่อนหมุน)
+  rot: number; // จำนวนครั้งที่หมุน 90° (0–3)
   status: AssetStatus;
 }
 
