@@ -3,6 +3,7 @@
   import { MapEngine } from '../map-engine/MapEngine';
   import { footprint } from '../domain/geometry';
   import { app, actions, andonColors } from '../stores/site.svelte';
+  import { guarded } from '../stores/guarded';
 
   let { engine = $bindable() }: { engine?: MapEngine } = $props();
   let container: HTMLDivElement;
@@ -12,7 +13,7 @@
       onSelect: (id) => {
         // โหมดเพิ่มสมาชิกไลน์: คลิกเครื่อง = เพิ่ม/เอาออกจากไลน์ แทนการเลือก
         if (app.lineAddMode) {
-          if (id) actions.toggleMember(id, app.lineAddMode);
+          if (id) guarded.toggleMember(id, app.lineAddMode);
           return;
         }
         app.selectedId = id;
@@ -65,7 +66,7 @@
   // กรอบไลน์อัตโนมัติ: ล้อมสมาชิกทุกตัว + เผื่อขอบ 0.5 ม.
   $effect(() => {
     const groups = app.site.lines
-      .filter((l) => app.showLineFrames || l.id === app.activeLineId)
+      .filter((l) => app.frameLines.includes(l.id) || l.id === app.activeLineId)
       .map((l) => ({ color: l.color, strong: l.id === app.activeLineId, members: app.site.assets.filter((a) => a.lineId === l.id) }));
     const frames = groups
       .map(({ color, strong, members }) => {

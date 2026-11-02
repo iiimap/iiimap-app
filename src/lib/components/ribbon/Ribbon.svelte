@@ -9,11 +9,13 @@
   import RGroup from './RGroup.svelte';
   import Icon from './Icon.svelte';
   import ModelGallery from './ModelGallery.svelte';
+  import Dropdown from './Dropdown.svelte';
+  import { guarded } from '../../stores/guarded';
   import type { CategoryId } from '../../domain/catalog';
 
   let { engine }: { engine?: MapEngine } = $props();
 
-  const VERSION = 'v0.16';
+  const VERSION = 'v0.17';
   const SAVE_TEXT = { saved: 'บันทึกแล้ว', saving: 'กำลังบันทึก…', error: 'บันทึกไม่สำเร็จ' };
 
   const TABS = [
@@ -35,6 +37,33 @@
   let stateCount = $derived(
     app.site.assets.reduce((m, a) => (a.andon && (m[a.status] = (m[a.status] ?? 0) + 1), m), {} as Record<string, number>)
   );
+
+  // ---------- ไลน์บน Ribbon: แสดงสูงสุด 10 ไลน์ เรียง A–Z ที่เหลืออยู่ในดรอปดาวน์ ----------
+  const MAX_CHIPS = 10;
+  let sortedLines = $derived(
+    [...app.site.lines].sort(
+      (a, b) => Number(b.id === app.draftLineId) - Number(a.id === app.draftLineId) || a.name.localeCompare(b.name, 'th', { numeric: true })
+    )
+  );
+  let chipLines = $derived(sortedLines.slice(0, MAX_CHIPS));
+  let moreLines = $derived(sortedLines.slice(MAX_CHIPS));
+  let moreQuery = $state('');
+  let activeInMore = $derived(moreLines.find((l) => l.id === app.activeLineId));
+
+  // ดรอปดาวน์ที่เปิดอยู่: 'more' = ไลน์ที่เหลือ, 'frames' = เลือกกรอบไลน์
+  let dd = $state<{ kind: 'more' | 'frames'; anchor: DOMRect } | null>(null);
+  function openDd(e: MouseEvent, kind: 'more' | 'frames') {
+    const anchor = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    dd = dd?.kind === kind ? null : { kind, anchor };
+    moreQuery = '';
+  }
+
+  function pickLine(id: string) {
+    app.activeLineId = app.activeLineId === id ? null : id;
+    if (app.lineAddMode !== app.draftLineId || !app.draftLineId) app.lineAddMode = null;
+  }
+
+  let allFramed = $derived(app.site.lines.length > 0 && app.site.lines.every((l) => app.frameLines.includes(l.id)));
 
   let thumbs = $state<Record<string, string>>({});
   onMount(() => {
@@ -100,7 +129,7 @@
       </RGroup>
       <RGroup label="แก้ไข">
         <RButton size="large" icon="rotateCw" label="หมุน 90°" title="หมุน (R)" disabled={!hasSel} onclick={() => app.selectedId && actions.rotate(app.selectedId)} />
-        <RButton size="large" icon="trash" label="ลบ" title="ลบ (Delete)" disabled={!hasSel} onclick={() => app.selectedId && actions.remove(app.selectedId)} />
+        <RButton size="large" icon="trash" label="ลบ" title="ลบ (Delete)" disabled={!hasSel} onclick={() => app.selectedId && guarded.removeAsset(app.selectedId)} />
         <div class="stack">
           <RButton icon="deselect" label="ยกเลิกเลือก" title="ยกเลิกเลือก (Esc)" disabled={!hasSel} onclick={() => (app.selectedId = null)} />
         </div>
@@ -133,33 +162,42 @@
       <RGroup label={app.draftLineId ? 'กำลังสร้างไลน์' : 'ไลน์'}>
         {#if app.draftLineId}
           <RButton size="large" icon="check" label="บันทึก" title="บันทึกไลน์ที่สร้าง" onclick={() => actions.saveDraft()} />
-          <RButton size="large" icon="close" label="ยกเลิก" title="ยกเลิกการสร้างไลน์" onclick={() => actions.cancelDraft()} />
+          <RButton size="large" icon="close" label="ยกเลิก" title="ยกเลิกการสร้างไลน์" onclick={() => guarded.cancelDraft()} />
         {:else}
           <RButton size="large" icon="zone" label="สร้างไลน์" title="สร้างไลน์ใหม่ ตั้งชื่อ แล้วเลือกเครื่องเข้าไลน์" disabled={!editing} onclick={() => actions.startDraft()} />
+          <RButton size="large" icon="trash" label="ลบไลน์" title="ลบไลน์ที่เลือก (Delete)" disabled={!editing || !app.activeLineId}
+            onclick={() => app.activeLineId && guarded.deleteLine(app.activeLineId)} />
         {/if}
       </RGroup>
-      <RGroup label="ไลน์ทั้งหมด · กดเพื่อไฮไลต์เครื่องในไลน์">
+      <RGroup label="ไลน์ทั้งหมด (A–Z) · กดเพื่อเลือกและตั้งค่า">
         {#if app.site.lines.length === 0}
           <span class="none">ยังไม่มีไลน์</span>
         {:else}
           <div class="chips">
-            {#each app.site.lines as l (l.id)}
-              <button class="chip" class:on={app.activeLineId === l.id} class:draft={app.draftLineId === l.id} style="--c:{l.color}"
-                title="{l.name} · {l.mode === 'byLine' ? 'ByLine' : 'ByStation'}"
-                onclick={() => { app.activeLineId = app.activeLineId === l.id ? null : l.id; app.lineAddMode = null; }}>
-                <i></i><span>{l.name}</span><b>{lineCount[l.id] ?? 0}</b>
+            {#each chipLines as l (l.id)}
+              <button class="chip linechip" class:on={app.activeLineId === l.id} class:draft={app.draftLineId === l.id} style="--c:{l.color}"
+                title="{l.name} · {l.mode === 'byLine' ? 'ByLine' : 'ByStation'}" onclick={() => pickLine(l.id)}>
+                <span>{l.name}</span><b>{lineCount[l.id] ?? 0}</b>
               </button>
             {/each}
+            {#if moreLines.length}
+              <button class="chip more dd-trigger" class:on={!!activeInMore} style="--c:{activeInMore?.color ?? '#94a3b8'}" onclick={(e) => openDd(e, 'more')}>
+                <span>{activeInMore ? activeInMore.name : `อีก ${moreLines.length} ไลน์`}</span> ▾
+              </button>
+            {/if}
           </div>
         {/if}
       </RGroup>
       <RGroup label="แสดง">
-        <RButton size="large" icon="grid" label="กรอบทุกไลน์" active={app.showLineFrames} onclick={() => (app.showLineFrames = !app.showLineFrames)} />
+        <button class="ddbtn dd-trigger" class:active={app.frameLines.length > 0} onclick={(e) => openDd(e, 'frames')}>
+          <Icon name="grid" size={26} />
+          <span>กรอบไลน์ ▾</span>
+        </button>
       </RGroup>
     {:else if app.ribbonTab === 'andon'}
       <RGroup label="สถานะ">
         <RButton size="large" icon="paste" label="เพิ่มสถานะ" disabled={!editing} onclick={() => actions.addAndonState()} />
-        <RButton size="large" icon="undo" label="คืนค่าสี" title="คืนสีและชื่อสถานะเริ่มต้น" disabled={!editing} onclick={() => actions.resetAndonStates()} />
+        <RButton size="large" icon="undo" label="คืนค่าสี" title="คืนสีและชื่อสถานะเริ่มต้น" disabled={!editing} onclick={() => guarded.resetAndonStates()} />
       </RGroup>
       <RGroup label="จำนวนเครื่องตามสถานะ (เฉพาะเครื่องที่เปิด Andon)">
         <div class="legend">
@@ -183,11 +221,43 @@
       </RGroup>
       <RGroup label="แสดง">
         <RButton size="large" icon="grid" label="เส้นกริด" active={app.showGrid} onclick={() => (app.showGrid = !app.showGrid)} />
-        <RButton size="large" icon="zone" label="กรอบไลน์" active={app.showLineFrames} onclick={() => (app.showLineFrames = !app.showLineFrames)} />
+        <button class="ddbtn dd-trigger" class:active={app.frameLines.length > 0} onclick={(e) => openDd(e, 'frames')}>
+          <Icon name="zone" size={26} />
+          <span>กรอบไลน์ ▾</span>
+        </button>
       </RGroup>
     {/if}
   </div>
 </header>
+
+{#if dd?.kind === 'more'}
+  <Dropdown anchor={dd.anchor} width={240} onclose={() => (dd = null)}>
+    <input class="ddsearch" bind:value={moreQuery} placeholder="ค้นหาไลน์" />
+    {#each moreLines.filter((l) => !moreQuery.trim() || l.name.toLowerCase().includes(moreQuery.trim().toLowerCase())) as l (l.id)}
+      <button class="dditem" class:on={app.activeLineId === l.id} style="--c:{l.color}" onclick={() => { pickLine(l.id); dd = null; }}>
+        <i></i><span>{l.name}</span><b>{lineCount[l.id] ?? 0}</b>
+      </button>
+    {/each}
+  </Dropdown>
+{:else if dd?.kind === 'frames'}
+  <Dropdown anchor={dd.anchor} width={240} onclose={() => (dd = null)}>
+    {#if app.site.lines.length === 0}
+      <p class="ddnone">ยังไม่มีไลน์</p>
+    {:else}
+      <label class="ddcheck all">
+        <input type="checkbox" checked={allFramed} onchange={() => actions.setAllFrames(!allFramed)} />
+        <span>แสดงทุกไลน์</span>
+      </label>
+      {#each sortedLines as l (l.id)}
+        <label class="ddcheck" style="--c:{l.color}">
+          <input type="checkbox" checked={app.frameLines.includes(l.id)} onchange={() => actions.toggleFrame(l.id)} />
+          <i></i><span>{l.name}</span>
+        </label>
+      {/each}
+      <p class="ddnote">ไลน์ที่แสดงกรอบ จะแสดงชื่อเครื่องในไลน์ด้วย</p>
+    {/if}
+  </Dropdown>
+{/if}
 
 {#if gallery}
   <ModelGallery category={gallery.category} anchor={gallery.anchor} {thumbs} onclose={() => (gallery = null)} />
@@ -240,6 +310,26 @@
   }
   .chip:hover:not(:disabled) { background: #f8fafc; border-color: var(--c); }
   .chip.on { background: color-mix(in srgb, var(--c) 14%, white); border-color: var(--c); font-weight: 600; }
+  .chip.more { border-left-color: var(--c); color: #475569; }
+  .ddbtn {
+    display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 64px; height: 64px; padding: 6px 6px 4px;
+    border: 1px solid transparent; border-radius: 6px; background: transparent; color: #1e293b; cursor: pointer; font: 12px system-ui, sans-serif;
+  }
+  .ddbtn:hover { background: #eef2f7; border-color: #e2e8f0; }
+  .ddbtn.active { background: #dbeafe; border-color: #bfdbfe; color: #1d4ed8; }
+  .ddsearch { font: 13px system-ui, sans-serif; padding: 7px 9px; margin: 2px 2px 6px; border: 1px solid #e2e8f0; border-radius: 7px; }
+  .ddsearch:focus { outline: none; border-color: #93c5fd; }
+  .dditem, .ddcheck {
+    display: flex; align-items: center; gap: 8px; padding: 7px 8px; border: 0; border-radius: 6px; background: transparent;
+    font: 13px system-ui, sans-serif; color: #0f172a; cursor: pointer; text-align: left;
+  }
+  .dditem:hover, .ddcheck:hover { background: #f1f5f9; }
+  .dditem.on { background: color-mix(in srgb, var(--c) 14%, white); font-weight: 600; }
+  .dditem i, .ddcheck i { width: 10px; height: 10px; border-radius: 3px; background: var(--c); flex: none; }
+  .dditem span, .ddcheck span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dditem b { font-size: 11px; font-weight: 600; color: #475569; background: #f1f5f9; border-radius: 999px; padding: 0 6px; }
+  .ddcheck.all { font-weight: 600; border-bottom: 1px solid #f1f5f9; border-radius: 6px 6px 0 0; margin-bottom: 2px; }
+  .ddnone, .ddnote { margin: 6px 8px; font-size: 11.5px; color: #94a3b8; }
   .chip.draft { border-style: dashed; border-left-style: solid; }
   .chip.draft::after { content: 'ยังไม่บันทึก'; font-size: 10px; font-weight: 500; color: #b45309; background: #fef3c7; border-radius: 999px; padding: 0 6px; }
   .chip i { display: none; }

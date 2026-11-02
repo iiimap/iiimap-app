@@ -4,7 +4,9 @@
   import StatusBar from '../lib/components/StatusBar.svelte';
   import Properties from '../lib/components/Properties.svelte';
   import Labels from '../lib/components/Labels.svelte';
-  import LinePanel from '../lib/components/panels/LinePanel.svelte';
+  import LineConfig from '../lib/components/panels/LineConfig.svelte';
+  import ConfirmModal from '../lib/components/ConfirmModal.svelte';
+  import { guarded } from '../lib/stores/guarded';
   import AndonPanel from '../lib/components/panels/AndonPanel.svelte';
   import type { MapEngine } from '../lib/map-engine/MapEngine';
   import { app, actions } from '../lib/stores/site.svelte';
@@ -62,9 +64,16 @@
       if (app.placing) app.placeRot = (app.placeRot + 1) % 4;
       else if (app.selectedId) actions.rotate(app.selectedId);
     }
-    if ((e.code === 'Delete' || e.code === 'Backspace') && app.selectedId) {
-      e.preventDefault();
-      actions.remove(app.selectedId);
+    if (e.code === 'Delete' || e.code === 'Backspace') {
+      // ลบเครื่องที่เลือก หรือถ้าไม่ได้เลือกเครื่อง ลบไลน์ที่เลือกอยู่ (ถามย้ำก่อนเสมอ)
+      if (app.selectedId) {
+        e.preventDefault();
+        guarded.removeAsset(app.selectedId);
+      } else if (app.activeLineId) {
+        e.preventDefault();
+        if (app.activeLineId === app.draftLineId) guarded.cancelDraft();
+        else guarded.deleteLine(app.activeLineId);
+      }
     }
   }
 </script>
@@ -76,12 +85,14 @@
   <div class="stage">
     <MapCanvas bind:engine />
     <Labels {engine} />
-    {#if app.ribbonTab === 'line'}<LinePanel />{/if}
+    <LineConfig />
     {#if app.ribbonTab === 'andon'}<AndonPanel />{/if}
     <Properties />
   </div>
   <StatusBar {engine} />
 </main>
+
+<ConfirmModal />
 
 <style>
   :global(body) { margin: 0; background: #f4f6f9; }

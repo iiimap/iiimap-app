@@ -1,6 +1,7 @@
 <script lang="ts">
   import { app, actions } from '../stores/site.svelte';
   import { exportFile, readFile } from '../stores/persist';
+  import { ask } from '../stores/confirm.svelte';
 
   let open = $state(false);
   let error = $state('');
@@ -26,13 +27,13 @@
       setTimeout(() => (error = ''), 4000);
       return;
     }
-    if (!confirm(`เปิดผัง "${site.name}" แทนผังปัจจุบัน?\nผังปัจจุบันจะถูกแทนที่ (Export เก็บไว้ก่อนได้)`)) return;
+    if (!(await ask({ title: `เปิดผัง "${site.name}" แทนผังปัจจุบัน?`, message: 'ผังปัจจุบันจะถูกแทนที่ (Export เก็บไว้ก่อนได้)', confirmText: 'เปิดผัง' }))) return;
     actions.loadSite(site);
   }
 
-  function onNew() {
+  async function onNew() {
     open = false;
-    if (!confirm('เริ่มผังใหม่ว่างเปล่า?\nผังปัจจุบันจะถูกลบ (Export เก็บไว้ก่อนได้)')) return;
+    if (!(await ask({ title: 'เริ่มผังใหม่ว่างเปล่า?', message: 'ผังปัจจุบันจะถูกลบ (Export เก็บไว้ก่อนได้)', confirmText: 'เริ่มผังใหม่' }))) return;
     actions.newSite();
   }
 </script>

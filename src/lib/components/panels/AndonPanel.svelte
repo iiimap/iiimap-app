@@ -2,6 +2,7 @@
   // แผงตั้งค่า Andon: สีและความหมายของแต่ละสถานะ + สูตร MTTR / MTBF
   import { METRIC_VARIABLES, SAMPLE_VALUES, checkFormula, evalFormula } from '../../domain/formula';
   import { app, actions } from '../../stores/site.svelte';
+  import { guarded } from '../../stores/guarded';
 
   let editable = $derived(app.mode === 'edit');
   const metrics = $derived(app.site.metrics);
@@ -54,7 +55,7 @@
                 onchange={(e) => { actions.setSeverity(st.id, +e.currentTarget.value); e.currentTarget.value = String(st.severity); }} />
               {#if editable}
                 <button class="icon" title={usedBy[st.id] ? `ลบ (เครื่อง ${usedBy[st.id]} ตัวจะกลับเป็นสถานะระดับต่ำสุด)` : 'ลบ'}
-                  disabled={nonSystem <= 1} onclick={() => actions.deleteAndonState(st.id)}>×</button>
+                  disabled={nonSystem <= 1} onclick={() => guarded.deleteAndonState(st.id)}>×</button>
               {:else}<span></span>{/if}
             {/if}
           </div>
@@ -64,7 +65,7 @@
       {#if editable}
         <div class="btns">
           <button onclick={() => actions.addAndonState()}>+ เพิ่มสถานะ</button>
-          <button class="ghost" onclick={() => actions.resetAndonStates()}>คืนค่าเริ่มต้น</button>
+          <button class="ghost" onclick={() => guarded.resetAndonStates()}>คืนค่าเริ่มต้น</button>
         </div>
       {/if}
     </section>
@@ -107,7 +108,7 @@
       </div>
 
       {#if editable}
-        <div class="btns"><button class="ghost" onclick={() => actions.resetFormulas()}>คืนสูตรมาตรฐาน</button></div>
+        <div class="btns"><button class="ghost" onclick={() => guarded.resetFormulas()}>คืนสูตรมาตรฐาน</button></div>
       {/if}
       <p class="note">ค่าจริงจะคำนวณจากประวัติ Andon เมื่อเชื่อมระบบบันทึกเหตุการณ์ (backend) ตอนนี้แสดงผลจากค่าตัวอย่าง</p>
     </section>

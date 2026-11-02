@@ -1,12 +1,20 @@
 <script lang="ts">
-  // ป้ายชื่อโมเดล: แสดงเฉพาะตัวที่เมาส์ชี้ และตัวที่เลือกอยู่
+  // ป้ายชื่อโมเดล: แสดงเฉพาะตัวที่เมาส์ชี้ ตัวที่เลือกอยู่ และเครื่องในไลน์ที่เปิดกรอบไว้
   // เป็น HTML ซ้อนบน canvas จึงคมชัดทุกระดับซูม และพิมพ์ภาษาไทยได้สวย
   import type { MapEngine } from '../map-engine/MapEngine';
   import { app, andonColors } from '../stores/site.svelte';
 
   let { engine }: { engine?: MapEngine } = $props();
 
-  let ids = $derived([...new Set([app.selectedId, app.hoverId])].filter((x): x is string => !!x));
+  let ids = $derived(
+    [
+      ...new Set([
+        app.selectedId,
+        app.hoverId,
+        ...app.site.assets.filter((a) => a.lineId && app.frameLines.includes(a.lineId)).map((a) => a.id)
+      ])
+    ].filter((x): x is string => !!x)
+  );
   let labels = $derived(
     ids.map((id) => app.site.assets.find((a) => a.id === id)).filter((a) => !!a)
   );

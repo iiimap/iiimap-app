@@ -1,6 +1,7 @@
 <script lang="ts">
   import { MODELS, CATEGORIES } from '../domain/catalog';
   import { app, actions, andonColors } from '../stores/site.svelte';
+  import { guarded } from '../stores/guarded';
 
   let asset = $derived(app.site.assets.find((a) => a.id === app.selectedId));
   let base = $derived(asset ? MODELS[asset.kind] : null);
@@ -13,9 +14,11 @@
 
   function onLineChange(e: Event) {
     if (!asset) return;
-    const v = (e.currentTarget as HTMLSelectElement).value;
-    if (v) actions.addToLine(asset.id, v);
-    else actions.removeFromLine(asset.id);
+    const sel = e.currentTarget as HTMLSelectElement;
+    const v = sel.value;
+    sel.value = asset.lineId ?? ''; // คืนค่าเดิมไว้ก่อน รอผลจากหน้าต่างถามย้ำ
+    if (v) guarded.addToLine(asset.id, v);
+    else guarded.removeFromLine(asset.id);
   }
 </script>
 
@@ -87,7 +90,7 @@
     {#if editable}
       <div class="actions">
         <button onclick={() => actions.rotate(asset!.id)}>⟳ หมุน 90°</button>
-        <button class="danger" onclick={() => actions.remove(asset!.id)}>ลบ</button>
+        <button class="danger" onclick={() => guarded.removeAsset(asset!.id)}>ลบ</button>
       </div>
     {/if}
   </aside>

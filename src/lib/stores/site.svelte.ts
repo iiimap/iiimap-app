@@ -29,7 +29,7 @@ export const app = $state({
   placeRot: 0,
   zoom: 1,
   showGrid: true,
-  showLineFrames: false, // แสดงกรอบทุกไลน์
+  frameLines: [] as string[], // ไลน์ที่แสดงกรอบ (และชื่อเครื่องในไลน์)
   recent: loadRecent(), // โมเดลที่ใช้ล่าสุด (สูงสุด 6)
   ribbonTab: 'insert' as RibbonTab,
   activeLineId: null as string | null, // ไลน์ที่กำลังดู (ไฮไลต์สมาชิกทั้งหมด)
@@ -109,6 +109,7 @@ function restore(json: string) {
   if (!app.site.lines.some((l) => l.id === app.activeLineId)) app.activeLineId = null;
   if (!app.site.lines.some((l) => l.id === app.lineAddMode)) app.lineAddMode = null;
   if (app.draftLineId && !app.site.lines.some((l) => l.id === app.draftLineId)) clearDraft();
+  app.frameLines = app.frameLines.filter((id) => app.site.lines.some((l) => l.id === id));
   app.hoverId = null;
 }
 
@@ -180,6 +181,7 @@ function replaceSite(site: Site) {
   app.placing = null;
   app.activeLineId = null;
   app.lineAddMode = null;
+  app.frameLines = [];
   clearDraft();
   history.past = [];
   history.future = [];
@@ -236,6 +238,8 @@ export const actions = {
   setTab(tab: RibbonTab) {
     app.ribbonTab = tab;
     if (tab !== 'line') app.lineAddMode = null;
+    // ออกจากแท็บ Line = ปิดกล่องตั้งค่าไลน์ (ยกเว้นไลน์ใหม่ที่ยังไม่บันทึก)
+    if (tab !== 'line' && app.activeLineId !== app.draftLineId) app.activeLineId = null;
     if (tab !== 'insert') app.placing = null;
   },
 
@@ -350,6 +354,15 @@ export const actions = {
   },
 
   // ---------- Line ----------
+  // ---------- กรอบไลน์ ----------
+  toggleFrame(id: string) {
+    app.frameLines = app.frameLines.includes(id) ? app.frameLines.filter((x) => x !== id) : [...app.frameLines, id];
+  },
+
+  setAllFrames(on: boolean) {
+    app.frameLines = on ? app.site.lines.map((l) => l.id) : [];
+  },
+
   // ---------- สร้างไลน์ใหม่ (ยังไม่บันทึก → บันทึก / ยกเลิก) ----------
   startDraft() {
     if (app.draftLineId) return;
@@ -407,6 +420,7 @@ export const actions = {
     app.site.lines = app.site.lines.filter((l) => l.id !== id);
     if (app.activeLineId === id) app.activeLineId = null;
     if (app.lineAddMode === id) app.lineAddMode = null;
+    app.frameLines = app.frameLines.filter((x) => x !== id);
     clearDraft();
   },
 
@@ -423,6 +437,7 @@ export const actions = {
     checkpoint();
     app.site.lines = app.site.lines.filter((l) => l.id !== id);
     for (const a of app.site.assets) if (a.lineId === id) a.lineId = null;
+    app.frameLines = app.frameLines.filter((x) => x !== id);
     if (app.activeLineId === id) app.activeLineId = null;
     if (app.lineAddMode === id) app.lineAddMode = null;
   },
