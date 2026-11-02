@@ -35,7 +35,9 @@ export interface AndonState {
   id: string;
   name: string;
   color: string; // #rrggbb
-  severity: number; // ยิ่งมากยิ่งร้ายแรง ใช้ตัดสินสีของไลน์แบบ ByLine
+  severity: number; // ระดับ 1–9 ยิ่งมากยิ่งร้ายแรง ใช้ตัดสินสีของไลน์แบบ ByLine
+  /** สถานะของระบบ: 'offline' = ขาดการเชื่อมต่อ (มีเสมอ ลบไม่ได้ ไม่มีระดับ ไม่นับใน ByLine) */
+  system?: 'offline';
 }
 
 /** ตั้งค่าตัวชี้วัด Andon */

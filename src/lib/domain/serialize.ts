@@ -1,6 +1,6 @@
 // แปลงผังเป็นไฟล์ / อ่านผังจากไฟล์ (ใช้ทั้งบันทึกอัตโนมัติ และ Export / Import)
 import type { AndonState, Asset, Line, MetricsConfig, Site } from './types';
-import { DEFAULT_ANDON_STATES, DEFAULT_METRICS } from './defaults';
+import { DEFAULT_ANDON_STATES, DEFAULT_METRICS, OFFLINE_STATE, clampSeverity } from './defaults';
 import { MODELS } from './catalog';
 
 export const FILE_FORMAT = 'iiimap-site';
@@ -23,8 +23,15 @@ const isColor = (v: unknown): v is string => isStr(v) && /^#[0-9a-fA-F]{6}$/.tes
 
 function readStates(v: unknown): AndonState[] {
   if (!Array.isArray(v)) return structuredClone(DEFAULT_ANDON_STATES);
-  const list = v.filter((s) => s && isStr(s.id) && isStr(s.name) && isColor(s.color) && isNum(s.severity));
-  return list.length ? list : structuredClone(DEFAULT_ANDON_STATES);
+  const list: AndonState[] = v
+    .filter((s) => s && isStr(s.id) && isStr(s.name) && isColor(s.color) && isNum(s.severity))
+    .map((s) =>
+      s.id === OFFLINE_STATE.id || s.system === 'offline'
+        ? { ...OFFLINE_STATE, id: s.id, name: s.name, color: s.color }
+        : { id: s.id, name: s.name, color: s.color, severity: clampSeverity(s.severity) }
+    );
+  if (!list.some((s) => s.system === 'offline')) list.push({ ...OFFLINE_STATE }); // ต้องมีสถานะขาดการเชื่อมต่อเสมอ
+  return list.some((s) => !s.system) ? list : structuredClone(DEFAULT_ANDON_STATES);
 }
 
 function readLines(v: unknown): Line[] {

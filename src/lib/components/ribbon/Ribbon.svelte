@@ -13,7 +13,7 @@
 
   let { engine }: { engine?: MapEngine } = $props();
 
-  const VERSION = 'v0.14';
+  const VERSION = 'v0.15';
   const SAVE_TEXT = { saved: 'บันทึกแล้ว', saving: 'กำลังบันทึก…', error: 'บันทึกไม่สำเร็จ' };
 
   const TABS = [
@@ -27,6 +27,14 @@
   let tabs = $derived(TABS.filter((t) => app.mode === 'edit' || !t.edit));
   let editing = $derived(app.mode === 'edit');
   let hasSel = $derived(!!app.selectedId);
+
+  // จำนวนเครื่องในแต่ละไลน์ / แต่ละสถานะ (แสดงบน Ribbon)
+  let lineCount = $derived(
+    app.site.assets.reduce((m, a) => (a.lineId && (m[a.lineId] = (m[a.lineId] ?? 0) + 1), m), {} as Record<string, number>)
+  );
+  let stateCount = $derived(
+    app.site.assets.reduce((m, a) => (a.andon && (m[a.status] = (m[a.status] ?? 0) + 1), m), {} as Record<string, number>)
+  );
 
   let thumbs = $state<Record<string, string>>({});
   onMount(() => {
@@ -122,27 +130,44 @@
         </RGroup>
       {/if}
     {:else if app.ribbonTab === 'line'}
-      <RGroup label="ไลน์">
-        <RButton size="large" icon="zone" label="สร้างไลน์" title="สร้างไลน์ใหม่ แล้วเลือกเครื่องเข้าไลน์" disabled={!editing} onclick={() => actions.createLine()} />
-        <RButton size="large" icon="deselect" label="ยกเลิกดู" title="เลิกไฮไลต์ไลน์" disabled={!app.activeLineId} onclick={() => { app.activeLineId = null; app.lineAddMode = null; }} />
+      <RGroup label={app.draft ? 'กำลังสร้างไลน์' : 'ไลน์'}>
+        {#if app.draft}
+          <RButton size="large" icon="check" label="บันทึก" title="บันทึกไลน์ที่สร้าง" onclick={() => actions.saveDraft()} />
+          <RButton size="large" icon="close" label="ยกเลิก" title="ยกเลิกการสร้างไลน์" onclick={() => actions.cancelDraft()} />
+        {:else}
+          <RButton size="large" icon="zone" label="สร้างไลน์" title="สร้างไลน์ใหม่ ตั้งชื่อ แล้วเลือกเครื่องเข้าไลน์" disabled={!editing} onclick={() => actions.startDraft()} />
+        {/if}
+      </RGroup>
+      <RGroup label="ไลน์ทั้งหมด · กดเพื่อไฮไลต์เครื่องในไลน์">
+        {#if app.site.lines.length === 0}
+          <span class="none">ยังไม่มีไลน์</span>
+        {:else}
+          <div class="chips">
+            {#each app.site.lines as l (l.id)}
+              <button class="chip" class:on={app.activeLineId === l.id} style="--c:{l.color}" disabled={!!app.draft}
+                title="{l.name} · {l.mode === 'byLine' ? 'ByLine' : 'ByStation'}"
+                onclick={() => { app.activeLineId = app.activeLineId === l.id ? null : l.id; app.lineAddMode = null; }}>
+                <i></i><span>{l.name}</span><b>{lineCount[l.id] ?? 0}</b>
+              </button>
+            {/each}
+          </div>
+        {/if}
       </RGroup>
       <RGroup label="แสดง">
         <RButton size="large" icon="grid" label="กรอบทุกไลน์" active={app.showLineFrames} onclick={() => (app.showLineFrames = !app.showLineFrames)} />
       </RGroup>
-      <div class="info">
-        <b>{app.site.lines.length}</b> ไลน์ ·
-        เครื่องในไลน์ <b>{app.site.assets.filter((a) => a.lineId).length}</b> / {app.site.assets.length}
-      </div>
     {:else if app.ribbonTab === 'andon'}
       <RGroup label="สถานะ">
         <RButton size="large" icon="paste" label="เพิ่มสถานะ" disabled={!editing} onclick={() => actions.addAndonState()} />
         <RButton size="large" icon="undo" label="คืนค่าสี" title="คืนสีและชื่อสถานะเริ่มต้น" disabled={!editing} onclick={() => actions.resetAndonStates()} />
       </RGroup>
-      <div class="legend">
-        {#each app.site.andonStates as st (st.id)}
-          <span><i style="background:{st.color}"></i>{st.name}</span>
-        {/each}
-      </div>
+      <RGroup label="จำนวนเครื่องตามสถานะ (เฉพาะเครื่องที่เปิด Andon)">
+        <div class="legend">
+          {#each app.site.andonStates as st (st.id)}
+            <span title="{st.name}: {stateCount[st.id] ?? 0} เครื่อง"><i style="background:{st.color}"></i>{st.name}<b>{stateCount[st.id] ?? 0}</b></span>
+          {/each}
+        </div>
+      </RGroup>
     {:else}
       <RGroup label="หมุนผัง">
         <RButton size="large" icon="rotateCcw" label="ทวนเข็ม" onclick={() => engine?.rotate(-1)} />
@@ -206,11 +231,23 @@
   .stack { display: flex; flex-direction: column; gap: 2px; padding-top: 2px; }
   .zoomtext { font-size: 12px; color: #475569; padding-left: 8px; font-variant-numeric: tabular-nums; }
 
-  .info { align-self: center; padding: 0 16px; font-size: 12px; color: #64748b; white-space: nowrap; }
-  .info b { color: #0f172a; }
-  .legend { display: flex; flex-wrap: wrap; align-content: center; gap: 6px 14px; padding: 0 16px; max-width: 520px; }
+  .none { align-self: center; font-size: 12px; color: #94a3b8; padding: 0 12px; }
+  .chips { display: grid; grid-auto-flow: column; grid-template-rows: repeat(2, 30px); gap: 4px 6px; padding-top: 2px; }
+  .chip {
+    display: flex; align-items: center; gap: 6px; height: 30px; padding: 0 10px 0 8px; max-width: 180px;
+    border: 1px solid #e2e8f0; border-left: 4px solid var(--c); border-radius: 7px; background: #fff; cursor: pointer;
+    font: 12.5px system-ui, sans-serif; color: #1e293b;
+  }
+  .chip:hover:not(:disabled) { background: #f8fafc; border-color: var(--c); }
+  .chip.on { background: color-mix(in srgb, var(--c) 14%, white); border-color: var(--c); font-weight: 600; }
+  .chip:disabled { opacity: 0.45; cursor: default; }
+  .chip i { display: none; }
+  .chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .chip b { font-size: 11px; font-weight: 600; color: #475569; background: #f1f5f9; border-radius: 999px; padding: 0 6px; }
+  .legend { display: grid; grid-auto-flow: column; grid-template-rows: repeat(3, 20px); gap: 2px 18px; padding: 2px 6px 0; }
   .legend span { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #334155; white-space: nowrap; }
-  .legend i { width: 12px; height: 12px; border-radius: 50%; display: inline-block; }
+  .legend i { width: 11px; height: 11px; border-radius: 50%; display: inline-block; flex: none; }
+  .legend b { margin-left: 2px; min-width: 22px; text-align: center; font-size: 11px; color: #0f172a; background: #f1f5f9; border-radius: 999px; padding: 0 6px; }
 
   /* ปุ่มหมวดโมเดล (เปิดแกลเลอรี) */
   .cat {

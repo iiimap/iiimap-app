@@ -1,13 +1,22 @@
 import type { AndonState, MetricsConfig } from './types';
 
 // สถานะ Andon ตั้งต้น (ผู้ใช้แก้ชื่อ สี และระดับความร้ายแรงได้ทั้งหมด)
+export const SEVERITY_MIN = 1;
+export const SEVERITY_MAX = 9;
+
+export const OFFLINE_STATE: AndonState = { id: 'offline', name: 'ขาดการเชื่อมต่อ', color: '#94a3b8', severity: 0, system: 'offline' };
+
 export const DEFAULT_ANDON_STATES: AndonState[] = [
-  { id: 'running', name: 'ทำงานปกติ', color: '#16a34a', severity: 0 },
-  { id: 'idle', name: 'รอ / ว่าง', color: '#f59e0b', severity: 1 },
-  { id: 'material', name: 'เรียกวัตถุดิบ', color: '#2563eb', severity: 2 },
-  { id: 'alarm', name: 'เครื่องเสีย', color: '#dc2626', severity: 3 },
-  { id: 'offline', name: 'ออฟไลน์', color: '#94a3b8', severity: -1 }
+  { id: 'running', name: 'ทำงานปกติ', color: '#16a34a', severity: 1 },
+  { id: 'idle', name: 'รอ / ว่าง', color: '#f59e0b', severity: 2 },
+  { id: 'material', name: 'เรียกวัตถุดิบ', color: '#2563eb', severity: 3 },
+  { id: 'alarm', name: 'เครื่องเสีย', color: '#dc2626', severity: 4 },
+  OFFLINE_STATE
 ];
+
+/** ระดับต้องเป็นจำนวนเต็ม 1–9 */
+export const clampSeverity = (v: number) =>
+  Math.min(SEVERITY_MAX, Math.max(SEVERITY_MIN, Math.round(Number.isFinite(v) ? v : SEVERITY_MIN)));
 
 export const DEFAULT_METRICS: MetricsConfig = {
   mttr: 'repairTime / failures',

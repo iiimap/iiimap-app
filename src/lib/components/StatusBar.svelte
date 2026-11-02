@@ -2,13 +2,13 @@
   // แถบสถานะด้านล่าง (เหมือน Word): ข้อมูลผัง · คำแนะนำ · ซูม
   import type { MapEngine } from '../map-engine/MapEngine';
   import { MODELS } from '../domain/catalog';
-  import { app } from '../stores/site.svelte';
+  import { app, DRAFT } from '../stores/site.svelte';
 
   let { engine }: { engine?: MapEngine } = $props();
 
   let hint = $derived(
     app.lineAddMode
-      ? `คลิกเครื่องบนผังเพื่อเพิ่ม/เอาออกจาก ${app.site.lines.find((l) => l.id === app.lineAddMode)?.name ?? 'ไลน์'} · Esc เพื่อจบ`
+      ? `คลิกเครื่องบนผังเพื่อเพิ่ม/เอาออกจาก ${app.lineAddMode === DRAFT ? (app.draft?.name ?? 'ไลน์ใหม่') : (app.site.lines.find((l) => l.id === app.lineAddMode)?.name ?? 'ไลน์')} · Esc เพื่อจบ`
       : app.mode === 'view'
       ? 'ลากเพื่อเลื่อนผัง · Scroll เพื่อซูม · คลิกโมเดลเพื่อดูข้อมูล'
       : app.placing

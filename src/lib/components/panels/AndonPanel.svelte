@@ -23,6 +23,8 @@
     actions.commitEdit();
   }
 
+  let nonSystem = $derived(app.site.andonStates.filter((s) => !s.system).length);
+
   let usedBy = $derived(
     Object.fromEntries(app.site.andonStates.map((s) => [s.id, app.site.assets.filter((a) => a.andon && a.status === s.id).length]))
   );
@@ -34,7 +36,7 @@
   <div class="scroll">
     <section>
       <h4>สถานะและสี</h4>
-      <p class="hint">ตั้งชื่อและสีได้ตามมาตรฐานของโรงงาน · <b>ระดับ</b> ยิ่งสูงยิ่งร้ายแรง ใช้ตัดสินสีรวมของไลน์แบบ ByLine</p>
+      <p class="hint">ตั้งชื่อและสีได้ตามมาตรฐานของโรงงาน · <b>ระดับ 1–9</b> ยิ่งสูงยิ่งร้ายแรง ใช้ตัดสินสีรวมของไลน์แบบ ByLine</p>
 
       <div class="states">
         <div class="row th"><span>สี</span><span>ความหมาย</span><span>ระดับ</span><span></span></div>
@@ -44,12 +46,17 @@
               onfocus={() => actions.beginEdit()} onchange={() => actions.commitEdit()} />
             <input class="txt" bind:value={st.name} disabled={!editable}
               onfocus={() => actions.beginEdit()} onchange={() => actions.commitEdit()} />
-            <input class="num" type="number" step="1" bind:value={st.severity} disabled={!editable}
-              onfocus={() => actions.beginEdit()} onchange={() => actions.commitEdit()} />
-            {#if editable}
-              <button class="icon" title={usedBy[st.id] ? `ลบ (เครื่อง ${usedBy[st.id]} ตัวจะกลับเป็นสถานะปกติ)` : 'ลบ'}
-                disabled={app.site.andonStates.length <= 1} onclick={() => actions.deleteAndonState(st.id)}>×</button>
-            {:else}<span></span>{/if}
+            {#if st.system}
+              <span class="sys" title="สถานะของระบบ: ใช้เมื่อเครื่องขาดการเชื่อมต่อ ไม่มีระดับ ลบไม่ได้ และไม่นับในสีรวมของไลน์ (ยกเว้นทั้งไลน์ขาดการเชื่อมต่อหมด)">🔒 ระบบ</span>
+              <span></span>
+            {:else}
+              <input class="num" type="number" min="1" max="9" step="1" value={st.severity} disabled={!editable}
+                onchange={(e) => { actions.setSeverity(st.id, +e.currentTarget.value); e.currentTarget.value = String(st.severity); }} />
+              {#if editable}
+                <button class="icon" title={usedBy[st.id] ? `ลบ (เครื่อง ${usedBy[st.id]} ตัวจะกลับเป็นสถานะระดับต่ำสุด)` : 'ลบ'}
+                  disabled={nonSystem <= 1} onclick={() => actions.deleteAndonState(st.id)}>×</button>
+              {:else}<span></span>{/if}
+            {/if}
           </div>
         {/each}
       </div>
@@ -130,6 +137,7 @@
   }
   .txt:focus, .num:focus, .formula input:focus { outline: none; border-color: #93c5fd; box-shadow: 0 0 0 2px #dbeafe; }
   input:disabled { background: #f8fafc; color: #475569; }
+  .sys { font-size: 11px; color: #64748b; background: #f1f5f9; border-radius: 6px; padding: 5px 4px; text-align: center; cursor: help; white-space: nowrap; }
   .icon { border: 0; background: transparent; color: #94a3b8; font-size: 16px; cursor: pointer; border-radius: 6px; height: 26px; }
   .icon:hover:not(:disabled) { background: #fef2f2; color: #dc2626; }
   .icon:disabled { opacity: 0.3; cursor: default; }
