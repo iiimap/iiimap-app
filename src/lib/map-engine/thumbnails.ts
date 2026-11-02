@@ -1,6 +1,6 @@
 // สร้างรูปตัวอย่างโมเดล (มุม isometric) สำหรับแผงซ้าย
 import * as THREE from 'three';
-import { buildModel, setStatusColor, disposeModel } from './models';
+import { buildModel, setStatusColor, disposeModel, addAndon } from './models';
 import { MODELS } from '../domain/catalog';
 
 let cache: Record<string, string> | null = null;
@@ -23,6 +23,7 @@ export function getThumbnails(size = 112): Record<string, string> {
 
   for (const def of Object.values(MODELS)) {
     const model = buildModel(def.id, def);
+    if (def.andon !== 'none') addAndon(model, def.id); // รูปตัวอย่างโชว์เสาไฟถ้าประเภทนี้รองรับ
     setStatusColor(model, 0x16a34a);
     scene.add(model);
 

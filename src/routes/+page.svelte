@@ -4,6 +4,8 @@
   import StatusBar from '../lib/components/StatusBar.svelte';
   import Properties from '../lib/components/Properties.svelte';
   import Labels from '../lib/components/Labels.svelte';
+  import LinePanel from '../lib/components/panels/LinePanel.svelte';
+  import AndonPanel from '../lib/components/panels/AndonPanel.svelte';
   import type { MapEngine } from '../lib/map-engine/MapEngine';
   import { app, actions } from '../lib/stores/site.svelte';
 
@@ -16,7 +18,8 @@
     if (t.closest('input, select, textarea')) return;
 
     if (e.code === 'Escape') {
-      if (app.placing) app.placing = null;
+      if (app.lineAddMode) app.lineAddMode = null;
+      else if (app.placing) app.placing = null;
       else app.selectedId = null;
     }
     if (app.mode !== 'edit') return;
@@ -67,6 +70,8 @@
   <div class="stage">
     <MapCanvas bind:engine />
     <Labels {engine} />
+    {#if app.ribbonTab === 'line'}<LinePanel />{/if}
+    {#if app.ribbonTab === 'andon'}<AndonPanel />{/if}
     <Properties />
   </div>
   <StatusBar {engine} />

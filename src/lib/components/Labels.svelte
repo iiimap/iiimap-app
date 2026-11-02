@@ -2,8 +2,7 @@
   // ป้ายชื่อโมเดล: แสดงเฉพาะตัวที่เมาส์ชี้ และตัวที่เลือกอยู่
   // เป็น HTML ซ้อนบน canvas จึงคมชัดทุกระดับซูม และพิมพ์ภาษาไทยได้สวย
   import type { MapEngine } from '../map-engine/MapEngine';
-  import { STATUS_LABEL } from '../domain/catalog';
-  import { app } from '../stores/site.svelte';
+  import { app, andonColors } from '../stores/site.svelte';
 
   let { engine }: { engine?: MapEngine } = $props();
 
@@ -11,6 +10,9 @@
   let labels = $derived(
     ids.map((id) => app.site.assets.find((a) => a.id === id)).filter((a) => !!a)
   );
+  let colors = $derived(andonColors(app.site));
+  const stateName = (id: string) => app.site.andonStates.find((s) => s.id === id)?.name ?? '';
+  const lineName = (id: string | null) => app.site.lines.find((l) => l.id === id)?.name;
   let pos = $state<Record<string, { x: number; y: number }>>({});
 
   // ตามตำแหน่งโมเดลทุกเฟรม (เฉพาะตอนมีป้ายแสดงอยู่)
@@ -36,8 +38,9 @@
   {@const p = pos[a!.id]}
   {#if p}
     <div class="label" class:selected={a!.id === app.selectedId} style="left:{p.x}px; top:{p.y}px">
-      <span class="dot {a!.status}" title={STATUS_LABEL[a!.status]}></span>
+      {#if a!.andon}<span class="dot" style="background:{colors[a!.id]}" title={stateName(a!.status)}></span>{/if}
       {a!.name}
+      {#if lineName(a!.lineId)}<small>{lineName(a!.lineId)}</small>{/if}
     </div>
   {/if}
 {/each}
@@ -53,6 +56,5 @@
   }
   .label.selected { border-color: #2563eb; color: #1d4ed8; }
   .dot { width: 8px; height: 8px; border-radius: 50%; }
-  .running { background: #16a34a; } .idle { background: #f59e0b; }
-  .alarm { background: #dc2626; } .offline { background: #94a3b8; }
+  small { font-weight: 500; color: #64748b; }
 </style>

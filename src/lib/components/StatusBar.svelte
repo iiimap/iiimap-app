@@ -7,7 +7,9 @@
   let { engine }: { engine?: MapEngine } = $props();
 
   let hint = $derived(
-    app.mode === 'view'
+    app.lineAddMode
+      ? `คลิกเครื่องบนผังเพื่อเพิ่ม/เอาออกจาก ${app.site.lines.find((l) => l.id === app.lineAddMode)?.name ?? 'ไลน์'} · Esc เพื่อจบ`
+      : app.mode === 'view'
       ? 'ลากเพื่อเลื่อนผัง · Scroll เพื่อซูม · คลิกโมเดลเพื่อดูข้อมูล'
       : app.placing
         ? `กำลังวาง ${MODELS[app.placing]?.label ?? ''} · คลิกบนผังเพื่อวาง · R หมุน · Esc เลิก`
@@ -17,6 +19,8 @@
 
 <footer class="status">
   <span>โมเดล {app.site.assets.length} ชิ้น</span>
+  <span class="sep"></span>
+  <span>ไลน์ {app.site.lines.length}</span>
   <span class="sep"></span>
   <span>ผัง {app.site.width} × {app.site.depth} ม.</span>
   <span class="sep"></span>

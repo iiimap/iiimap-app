@@ -1,10 +1,12 @@
 import { emptySite } from '../domain/sample';
 import { MODELS } from '../domain/catalog';
+import { DEFAULT_ANDON_STATES, DEFAULT_METRICS, LINE_COLORS } from '../domain/defaults';
 import { footprint, snapAxis } from '../domain/geometry';
-import type { Asset, AssetKind, Site } from '../domain/types';
+import type { AndonState, Asset, AssetKind, LineMode, Site } from '../domain/types';
 import { loadLocal, saveLocal } from './persist';
 
 export type Mode = 'view' | 'edit';
+export type RibbonTab = 'home' | 'insert' | 'line' | 'andon' | 'view';
 
 function loadRecent(): string[] {
   try {
@@ -25,13 +27,16 @@ export const app = $state({
   placeRot: 0,
   zoom: 1,
   showGrid: true,
+  showLineFrames: false, // แสดงกรอบทุกไลน์
   recent: loadRecent(), // โมเดลที่ใช้ล่าสุด (สูงสุด 6)
-  ribbonTab: 'insert' as 'home' | 'insert' | 'view',
+  ribbonTab: 'insert' as RibbonTab,
+  activeLineId: null as string | null, // ไลน์ที่กำลังดู (ไฮไลต์สมาชิกทั้งหมด)
+  lineAddMode: null as string | null, // โหมด "คลิกบนผังเพื่อเพิ่มเข้าไลน์นี้"
   saveState: 'saved' as 'saved' | 'saving' | 'error'
 });
 
 // ================= บันทึกอัตโนมัติ =================
-// แก้ผังเมื่อไหร่ รอ 0.5 วินาทีหลังแก้ครั้งสุดท้ายแล้วค่อยบันทึก (ไม่บันทึกทุกครั้งที่ลากผ่านกริด)
+// แก้ผังเมื่อไหร่ รอ 0.5 วินาทีหลังแก้ครั้งสุดท้ายแล้วค่อยบันทึก
 let saveTimer: ReturnType<typeof setTimeout> | undefined;
 let lastSaved = JSON.stringify(app.site);
 
@@ -50,15 +55,27 @@ $effect.root(() => {
 });
 
 // ================= ประวัติ (Undo / Redo) =================
-// เก็บภาพรวมของ asset ทั้งหมดเป็น JSON ก่อนทุกการแก้ไข
+// เก็บภาพรวมของผัง (ยกเว้นชื่อและขนาดผัง) เป็น JSON ก่อนทุกการแก้ไข
 const HISTORY_LIMIT = 100;
 export const history = $state({ past: [] as string[], future: [] as string[] });
 
-const snapshot = () => JSON.stringify(app.site.assets);
+const snapshot = () =>
+  JSON.stringify({
+    assets: app.site.assets,
+    lines: app.site.lines,
+    andonStates: app.site.andonStates,
+    metrics: app.site.metrics
+  });
 
 function restore(json: string) {
-  app.site.assets = JSON.parse(json) as Asset[];
+  const s = JSON.parse(json);
+  app.site.assets = s.assets;
+  app.site.lines = s.lines;
+  app.site.andonStates = s.andonStates;
+  app.site.metrics = s.metrics;
   if (!app.site.assets.some((a) => a.id === app.selectedId)) app.selectedId = null;
+  if (!app.site.lines.some((l) => l.id === app.activeLineId)) app.activeLineId = null;
+  if (!app.site.lines.some((l) => l.id === app.lineAddMode)) app.lineAddMode = null;
   app.hoverId = null;
 }
 
@@ -80,7 +97,7 @@ export const clip = $state({ has: false });
 
 // ================= ตัวช่วย =================
 let seq = 0;
-const newId = () => `a-${Date.now().toString(36)}-${(seq++).toString(36)}`;
+const newId = (p = 'a') => `${p}-${Date.now().toString(36)}-${(seq++).toString(36)}`;
 
 /** ชื่อถัดไปที่ยังไม่ซ้ำ เช่น CNC-03 */
 function nextName(kind: AssetKind) {
@@ -115,16 +132,53 @@ function besideOf(a: Asset) {
 }
 
 const find = (id: string) => app.site.assets.find((a) => a.id === id);
+const findLine = (id: string) => app.site.lines.find((l) => l.id === id);
+
+/** สถานะเริ่มต้นของเครื่องใหม่ = สถานะ "ปกติ" (ร้ายแรงน้อยสุดที่ไม่ติดลบ) */
+function defaultStatus(): string {
+  const states = [...app.site.andonStates].sort((a, b) => a.severity - b.severity);
+  return (states.find((s) => s.severity >= 0) ?? states[0])?.id ?? 'running';
+}
 
 /** แทนที่ผังทั้งผัง (Import / ผังใหม่) แล้วล้างประวัติ เพราะย้อนข้ามผังไม่ได้ */
 function replaceSite(site: Site) {
   app.site = site;
   app.selectedId = null;
   app.placing = null;
+  app.activeLineId = null;
+  app.lineAddMode = null;
   history.past = [];
   history.future = [];
   clipboard = null;
   clip.has = false;
+}
+
+// ================= สี Andon ที่แสดงจริงบนผัง =================
+/**
+ * คำนวณสีไฟ Andon ของแต่ละเครื่อง
+ * - ByStation: สีตามสถานะของตัวเอง
+ * - ByLine: ทุกเครื่องในไลน์ (ที่เปิด Andon) ใช้สีของสถานะที่ร้ายแรงที่สุดในไลน์
+ */
+export function andonColors(site: Site): Record<string, string> {
+  const byId = new Map(site.andonStates.map((s) => [s.id, s]));
+  const worst = new Map<string, AndonState>();
+  for (const line of site.lines) {
+    if (line.mode !== 'byLine') continue;
+    for (const a of site.assets) {
+      if (a.lineId !== line.id || !a.andon) continue;
+      const st = byId.get(a.status);
+      const cur = worst.get(line.id);
+      if (st && (!cur || st.severity > cur.severity)) worst.set(line.id, st);
+    }
+  }
+  const out: Record<string, string> = {};
+  for (const a of site.assets) {
+    if (!a.andon) continue;
+    const line = a.lineId ? site.lines.find((l) => l.id === a.lineId) : undefined;
+    const st = line?.mode === 'byLine' ? worst.get(line.id) : byId.get(a.status);
+    out[a.id] = st?.color ?? '#94a3b8';
+  }
+  return out;
 }
 
 // ================= actions =================
@@ -132,8 +186,15 @@ export const actions = {
   setMode(mode: Mode) {
     app.mode = mode;
     app.placing = null;
-    // โหมดดูผังมีแค่แท็บมุมมอง
-    if (mode === 'view') app.ribbonTab = 'view';
+    app.lineAddMode = null;
+    // โหมดดูผัง: ไม่มีแท็บหน้าแรก / แทรก
+    if (mode === 'view' && (app.ribbonTab === 'home' || app.ribbonTab === 'insert')) app.ribbonTab = 'view';
+  },
+
+  setTab(tab: RibbonTab) {
+    app.ribbonTab = tab;
+    if (tab !== 'line') app.lineAddMode = null;
+    if (tab !== 'insert') app.placing = null;
   },
 
   startPlacing(kind: AssetKind | null) {
@@ -151,20 +212,21 @@ export const actions = {
 
   place(x: number, z: number, rot: number) {
     const kind = app.placing;
-    if (!kind || !MODELS[kind]) return;
+    const def = kind ? MODELS[kind] : undefined;
+    if (!kind || !def) return;
     checkpoint();
-    const c = MODELS[kind];
     const asset: Asset = {
       id: newId(),
       name: nextName(kind),
       kind,
-      areaId: null,
+      lineId: null,
       x,
       z,
-      w: c.w,
-      d: c.d,
+      w: def.w,
+      d: def.d,
       rot,
-      status: 'idle'
+      andon: def.andon === 'default-on', // ค่าเริ่มต้นตามประเภท
+      status: defaultStatus()
     };
     snapAsset(asset);
     app.site.assets.push(asset);
@@ -192,10 +254,7 @@ export const actions = {
     snapAsset(a);
   },
 
-  /**
-   * ขยาย/ลดขนาดทีละ 1 ม. ทั้งกว้างและลึกพร้อมกัน (สัดส่วนล็อก)
-   * ไม่เล็กกว่าขนาด default ของชนิดนั้น และไม่ใหญ่เกินผัง
-   */
+  /** ขยาย/ลดทีละ 1 ม. ทั้งกว้างและลึก ไม่เล็กกว่า default และไม่ใหญ่เกินผัง */
   grow(id: string, step: 1 | -1) {
     const a = find(id);
     if (!a) return;
@@ -211,7 +270,7 @@ export const actions = {
     snapAsset(a);
   },
 
-  /** เริ่มแก้ชื่อ/สถานะในแผงคุณสมบัติ: จำสถานะไว้ก่อน */
+  /** เริ่มแก้ค่าในช่องกรอก (ชื่อ สูตร สี ...): จำสถานะไว้ก่อน */
   beginEdit() {
     pendingEdit = snapshot();
   },
@@ -231,6 +290,113 @@ export const actions = {
     checkpoint();
     app.site.assets = app.site.assets.filter((a) => a.id !== id);
     if (app.selectedId === id) app.selectedId = null;
+  },
+
+  // ---------- Andon บนเครื่อง ----------
+  setAndon(id: string, on: boolean) {
+    const a = find(id);
+    if (!a || MODELS[a.kind]?.andon === 'none' || a.andon === on) return;
+    checkpoint();
+    a.andon = on;
+  },
+
+  setStatus(id: string, stateId: string) {
+    const a = find(id);
+    if (!a || a.status === stateId) return;
+    checkpoint();
+    a.status = stateId;
+  },
+
+  // ---------- Line ----------
+  createLine(): string {
+    checkpoint();
+    let n = app.site.lines.length + 1;
+    while (app.site.lines.some((l) => l.name === `Line ${n}`)) n++;
+    const id = newId('ln');
+    app.site.lines.push({
+      id,
+      name: `Line ${n}`,
+      mode: 'byLine',
+      color: LINE_COLORS[app.site.lines.length % LINE_COLORS.length]
+    });
+    app.activeLineId = id;
+    return id;
+  },
+
+  setLineMode(id: string, mode: LineMode) {
+    const l = findLine(id);
+    if (!l || l.mode === mode) return;
+    checkpoint();
+    l.mode = mode;
+  },
+
+  deleteLine(id: string) {
+    if (!findLine(id)) return;
+    checkpoint();
+    app.site.lines = app.site.lines.filter((l) => l.id !== id);
+    for (const a of app.site.assets) if (a.lineId === id) a.lineId = null;
+    if (app.activeLineId === id) app.activeLineId = null;
+    if (app.lineAddMode === id) app.lineAddMode = null;
+  },
+
+  /** เพิ่มเครื่องเข้าไลน์ (ถ้าอยู่ไลน์อื่นจะย้ายมา เพราะอยู่ได้ไลน์เดียว) */
+  addToLine(assetId: string, lineId: string) {
+    const a = find(assetId);
+    if (!a || !findLine(lineId) || a.lineId === lineId) return;
+    checkpoint();
+    a.lineId = lineId;
+  },
+
+  removeFromLine(assetId: string) {
+    const a = find(assetId);
+    if (!a || !a.lineId) return;
+    checkpoint();
+    a.lineId = null;
+  },
+
+  /** คลิกเครื่องบนผังในโหมดเพิ่มสมาชิก: ยังไม่อยู่ = เพิ่ม, อยู่แล้ว = เอาออก */
+  toggleMember(assetId: string, lineId: string) {
+    const a = find(assetId);
+    if (!a) return;
+    if (a.lineId === lineId) actions.removeFromLine(assetId);
+    else actions.addToLine(assetId, lineId);
+  },
+
+  // ---------- สถานะ Andon (สีและความหมาย) ----------
+  addAndonState() {
+    checkpoint();
+    const maxSev = Math.max(0, ...app.site.andonStates.map((s) => s.severity));
+    app.site.andonStates.push({ id: newId('st'), name: 'สถานะใหม่', color: '#8b5cf6', severity: maxSev + 1 });
+  },
+
+  deleteAndonState(id: string) {
+    if (app.site.andonStates.length <= 1) return;
+    checkpoint();
+    app.site.andonStates = app.site.andonStates.filter((s) => s.id !== id);
+    const fallback = defaultStatus();
+    for (const a of app.site.assets) if (a.status === id) a.status = fallback;
+    app.site.metrics.failureStates = app.site.metrics.failureStates.filter((s) => s !== id);
+  },
+
+  resetAndonStates() {
+    checkpoint();
+    app.site.andonStates = structuredClone(DEFAULT_ANDON_STATES);
+    const ids = new Set(app.site.andonStates.map((s) => s.id));
+    const fallback = defaultStatus();
+    for (const a of app.site.assets) if (!ids.has(a.status)) a.status = fallback;
+    app.site.metrics.failureStates = app.site.metrics.failureStates.filter((s) => ids.has(s));
+  },
+
+  toggleFailureState(id: string) {
+    checkpoint();
+    const list = app.site.metrics.failureStates;
+    app.site.metrics.failureStates = list.includes(id) ? list.filter((s) => s !== id) : [...list, id];
+  },
+
+  resetFormulas() {
+    checkpoint();
+    app.site.metrics.mttr = DEFAULT_METRICS.mttr;
+    app.site.metrics.mtbf = DEFAULT_METRICS.mtbf;
   },
 
   // ---------- ผัง ----------
@@ -275,8 +441,8 @@ export const actions = {
 
   /**
    * วางของจากคลิปบอร์ด
-   * - ตัด (Ctrl+X) แล้ววาง: ครั้งแรกกลับไปที่ตำแหน่งเดิม
-   * - คัดลอก (Ctrl+C) แล้ววาง: วางชิดข้างตัวต้นฉบับ
+   * - ตัดแล้ววาง: ครั้งแรกกลับไปที่ตำแหน่งเดิม (และกลับเข้าไลน์เดิม)
+   * - คัดลอกแล้ววาง: วางชิดข้างตัวต้นฉบับ (ไม่เข้าไลน์ ผู้ใช้เลือกเองว่าจะใส่ไลน์ไหน)
    * - วางซ้ำ: วางชิดต่อจากชิ้นล่าสุดไปเรื่อยๆ
    */
   paste() {
@@ -284,7 +450,8 @@ export const actions = {
     checkpoint();
     const src = clipboard;
     const pos = clipFromCut ? { x: src.x, z: src.z } : besideOf(src);
-    const asset: Asset = { ...src, id: newId(), name: nextName(src.kind), ...pos };
+    const keepLine = clipFromCut && src.lineId && findLine(src.lineId) ? src.lineId : null;
+    const asset: Asset = { ...src, id: newId(), name: nextName(src.kind), lineId: keepLine, ...pos };
     snapAsset(asset);
     app.site.assets.push(asset);
     clipboard = { ...src, x: asset.x, z: asset.z };

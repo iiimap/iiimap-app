@@ -1,4 +1,5 @@
 import type { Site } from './types';
+import { DEFAULT_ANDON_STATES, DEFAULT_METRICS } from './defaults';
 
 // ผังเปล่า ขนาด 60 x 40 เมตร
 export const emptySite: Site = {
@@ -7,6 +8,8 @@ export const emptySite: Site = {
   name: 'New Plant',
   width: 60,
   depth: 40,
-  areas: [],
+  lines: [],
+  andonStates: DEFAULT_ANDON_STATES,
+  metrics: DEFAULT_METRICS,
   assets: []
 };

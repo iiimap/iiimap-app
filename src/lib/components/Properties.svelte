@@ -1,19 +1,25 @@
 <script lang="ts">
-  import { MODELS, CATEGORIES, STATUS_LABEL } from '../domain/catalog';
-  import type { AssetStatus } from '../domain/types';
-  import { app, actions } from '../stores/site.svelte';
+  import { MODELS, CATEGORIES } from '../domain/catalog';
+  import { app, actions, andonColors } from '../stores/site.svelte';
 
   let asset = $derived(app.site.assets.find((a) => a.id === app.selectedId));
   let base = $derived(asset ? MODELS[asset.kind] : null);
   let category = $derived(CATEGORIES.find((c) => c.id === base?.category)?.label ?? '');
   let editable = $derived(app.mode === 'edit');
-  const statuses = Object.keys(STATUS_LABEL) as AssetStatus[];
-
+  let line = $derived(asset?.lineId ? app.site.lines.find((l) => l.id === asset!.lineId) : undefined);
+  let shown = $derived(asset ? andonColors(app.site)[asset.id] : undefined);
   // ขยายมาแล้วกี่ครั้ง (0 = ขนาด default)
   let level = $derived(asset && base ? asset.w - base.w : 0);
+
+  function onLineChange(e: Event) {
+    if (!asset) return;
+    const v = (e.currentTarget as HTMLSelectElement).value;
+    if (v) actions.addToLine(asset.id, v);
+    else actions.removeFromLine(asset.id);
+  }
 </script>
 
-{#if asset && base}
+{#if asset && base && !app.lineAddMode}
   <aside class="props">
     <div class="head">
       <span class="kind">{category} · {base.label}</span>
@@ -25,6 +31,16 @@
       <input bind:value={asset.name} disabled={!editable} onfocus={() => actions.beginEdit()} onchange={() => actions.commitEdit()} />
     </label>
 
+    <label>
+      ไลน์
+      <select value={asset.lineId ?? ''} disabled={!editable} onchange={onLineChange}>
+        <option value="">— ไม่อยู่ในไลน์ —</option>
+        {#each app.site.lines as l (l.id)}
+          <option value={l.id}>{l.name}</option>
+        {/each}
+      </select>
+    </label>
+
     <div class="size">
       <span class="lbl">ขนาด · default {base.w} × {base.d} ม.</span>
       <div class="stepper">
@@ -34,14 +50,37 @@
       </div>
     </div>
 
-    <label>
-      สถานะ
-      <select bind:value={asset.status} disabled={!editable} onfocus={() => actions.beginEdit()} onchange={() => actions.commitEdit()}>
-        {#each statuses as s}
-          <option value={s}>{STATUS_LABEL[s]}</option>
-        {/each}
-      </select>
-    </label>
+    <div class="andon">
+      <div class="arow">
+        <span class="lbl">Andon</span>
+        {#if base.andon === 'none'}
+          <span class="na">ประเภทนี้ไม่มี Andon</span>
+        {:else}
+          <label class="switch" title={editable ? '' : 'สลับเป็นโหมดแก้ไขผังเพื่อเปิด/ปิด'}>
+            <input type="checkbox" checked={asset.andon} disabled={!editable}
+              onchange={(e) => actions.setAndon(asset!.id, e.currentTarget.checked)} />
+            <span class="track"><span class="thumb"></span></span>
+            <span>{asset.andon ? 'เปิด' : 'ปิด'}</span>
+          </label>
+        {/if}
+      </div>
+
+      {#if asset.andon}
+        <div class="states">
+          {#each app.site.andonStates as st (st.id)}
+            <button class:on={asset.status === st.id} style="--c:{st.color}" onclick={() => actions.setStatus(asset!.id, st.id)}>
+              <span class="dot"></span>{st.name}
+            </button>
+          {/each}
+        </div>
+        {#if line?.mode === 'byLine'}
+          <p class="note">
+            <span class="dot" style="background:{shown}"></span>
+            {line.name} เป็นแบบ ByLine: ไฟแสดงสถานะที่ร้ายแรงที่สุดของทั้งไลน์
+          </p>
+        {/if}
+      {/if}
+    </div>
 
     <p class="pos">ตำแหน่ง X {asset.x} · Z {asset.z} · หมุน {asset.rot * 90}°</p>
 
@@ -56,7 +95,8 @@
 
 <style>
   .props {
-    position: absolute; top: 16px; right: 16px; width: 240px; z-index: 3; padding: 14px;
+    position: absolute; top: 16px; right: 16px; width: 260px; padding: 14px; z-index: 3;
+    max-height: calc(100% - 32px); overflow-y: auto; box-sizing: border-box;
     background: #ffffff; border: 1px solid #e5e7eb; border-radius: 12px;
     box-shadow: 0 4px 16px rgba(15, 23, 42, 0.06);
     font-family: system-ui, sans-serif; display: flex; flex-direction: column; gap: 10px;
@@ -65,7 +105,7 @@
   .kind { font-size: 12px; font-weight: 600; color: #2563eb; background: #eff6ff; padding: 3px 8px; border-radius: 999px; }
   .close { border: 0; background: transparent; font-size: 20px; line-height: 1; color: #94a3b8; cursor: pointer; }
   label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: #64748b; }
-  input, select {
+  input:not([type='checkbox']), select {
     font: 14px system-ui, sans-serif; color: #0f172a; padding: 7px 9px;
     border: 1px solid #e2e8f0; border-radius: 7px; background: #ffffff; min-width: 0;
   }
@@ -74,14 +114,35 @@
 
   .size { display: flex; flex-direction: column; gap: 6px; }
   .lbl { font-size: 12px; color: #64748b; }
-  .stepper { display: grid; grid-template-columns: 34px 1fr 34px; align-items: center; gap: 6px; font-size: 13px; color: #475569; }
-  .stepper b { text-align: center; font-weight: 600; color: #0f172a; font-variant-numeric: tabular-nums; }
+  .stepper { display: grid; grid-template-columns: 34px 1fr 34px; align-items: center; gap: 6px; }
+  .stepper b { text-align: center; font-weight: 600; color: #0f172a; font-variant-numeric: tabular-nums; font-size: 13px; }
   .stepper button {
     height: 34px; border: 1px solid #e2e8f0; border-radius: 7px; background: #ffffff;
     font-size: 16px; color: #334155; cursor: pointer;
   }
   .stepper button:hover:not(:disabled) { background: #eff6ff; color: #2563eb; border-color: #bfdbfe; }
   .stepper button:disabled { opacity: 0.35; cursor: default; }
+
+  .andon { display: flex; flex-direction: column; gap: 8px; padding-top: 8px; border-top: 1px solid #f1f5f9; }
+  .arow { display: flex; align-items: center; justify-content: space-between; }
+  .na { font-size: 12px; color: #94a3b8; }
+  .switch { flex-direction: row; align-items: center; gap: 8px; cursor: pointer; font-size: 12.5px; color: #334155; }
+  .switch input { position: absolute; opacity: 0; pointer-events: none; }
+  .track { width: 34px; height: 20px; border-radius: 999px; background: #cbd5e1; position: relative; transition: background 0.15s; }
+  .thumb { position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: left 0.15s; box-shadow: 0 1px 2px rgba(0,0,0,.2); }
+  .switch input:checked + .track { background: #16a34a; }
+  .switch input:checked + .track .thumb { left: 16px; }
+  .switch input:disabled + .track { opacity: 0.5; }
+  .states { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+  .states button {
+    display: flex; align-items: center; gap: 6px; padding: 6px 8px; border: 1px solid #e2e8f0; border-radius: 7px;
+    background: #fff; font: 12px system-ui, sans-serif; color: #334155; cursor: pointer; text-align: left;
+  }
+  .states button:hover { border-color: var(--c); }
+  .states button.on { border-color: var(--c); background: color-mix(in srgb, var(--c) 12%, white); color: #0f172a; font-weight: 600; }
+  .states .dot { background: var(--c); }
+  .dot { width: 9px; height: 9px; border-radius: 50%; flex: none; display: inline-block; }
+  .note { margin: 0; font-size: 11.5px; line-height: 1.5; color: #64748b; display: flex; gap: 6px; align-items: baseline; }
 
   .pos { margin: 0; font-size: 12px; color: #94a3b8; font-variant-numeric: tabular-nums; }
   .actions { display: flex; gap: 8px; }

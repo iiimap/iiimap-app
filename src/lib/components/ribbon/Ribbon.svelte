@@ -13,12 +13,14 @@
 
   let { engine }: { engine?: MapEngine } = $props();
 
-  const VERSION = 'v0.13';
+  const VERSION = 'v0.14';
   const SAVE_TEXT = { saved: 'บันทึกแล้ว', saving: 'กำลังบันทึก…', error: 'บันทึกไม่สำเร็จ' };
 
   const TABS = [
     { id: 'home', label: 'หน้าแรก', edit: true },
     { id: 'insert', label: 'แทรก', edit: true },
+    { id: 'line', label: 'Line', edit: false },
+    { id: 'andon', label: 'Andon', edit: false },
     { id: 'view', label: 'มุมมอง', edit: false }
   ] as const;
 
@@ -68,7 +70,7 @@
   <nav class="tabs">
     <FileMenu />
     {#each tabs as t}
-      <button class="tab" class:on={app.ribbonTab === t.id} onclick={() => (app.ribbonTab = t.id)}>
+      <button class="tab" class:on={app.ribbonTab === t.id} onclick={() => actions.setTab(t.id)}>
         {t.label}
       </button>
     {/each}
@@ -119,9 +121,28 @@
           {/each}
         </RGroup>
       {/if}
-      <RGroup label="พื้นที่ (เร็วๆ นี้)">
-        <RButton size="large" icon="zone" label="โซน" title="วาดโซน เช่น Line A, คลังสินค้า (กำลังพัฒนา)" disabled />
+    {:else if app.ribbonTab === 'line'}
+      <RGroup label="ไลน์">
+        <RButton size="large" icon="zone" label="สร้างไลน์" title="สร้างไลน์ใหม่ แล้วเลือกเครื่องเข้าไลน์" disabled={!editing} onclick={() => actions.createLine()} />
+        <RButton size="large" icon="deselect" label="ยกเลิกดู" title="เลิกไฮไลต์ไลน์" disabled={!app.activeLineId} onclick={() => { app.activeLineId = null; app.lineAddMode = null; }} />
       </RGroup>
+      <RGroup label="แสดง">
+        <RButton size="large" icon="grid" label="กรอบทุกไลน์" active={app.showLineFrames} onclick={() => (app.showLineFrames = !app.showLineFrames)} />
+      </RGroup>
+      <div class="info">
+        <b>{app.site.lines.length}</b> ไลน์ ·
+        เครื่องในไลน์ <b>{app.site.assets.filter((a) => a.lineId).length}</b> / {app.site.assets.length}
+      </div>
+    {:else if app.ribbonTab === 'andon'}
+      <RGroup label="สถานะ">
+        <RButton size="large" icon="paste" label="เพิ่มสถานะ" disabled={!editing} onclick={() => actions.addAndonState()} />
+        <RButton size="large" icon="undo" label="คืนค่าสี" title="คืนสีและชื่อสถานะเริ่มต้น" disabled={!editing} onclick={() => actions.resetAndonStates()} />
+      </RGroup>
+      <div class="legend">
+        {#each app.site.andonStates as st (st.id)}
+          <span><i style="background:{st.color}"></i>{st.name}</span>
+        {/each}
+      </div>
     {:else}
       <RGroup label="หมุนผัง">
         <RButton size="large" icon="rotateCcw" label="ทวนเข็ม" onclick={() => engine?.rotate(-1)} />
@@ -137,6 +158,7 @@
       </RGroup>
       <RGroup label="แสดง">
         <RButton size="large" icon="grid" label="เส้นกริด" active={app.showGrid} onclick={() => (app.showGrid = !app.showGrid)} />
+        <RButton size="large" icon="zone" label="กรอบไลน์" active={app.showLineFrames} onclick={() => (app.showLineFrames = !app.showLineFrames)} />
       </RGroup>
     {/if}
   </div>
@@ -183,6 +205,12 @@
   }
   .stack { display: flex; flex-direction: column; gap: 2px; padding-top: 2px; }
   .zoomtext { font-size: 12px; color: #475569; padding-left: 8px; font-variant-numeric: tabular-nums; }
+
+  .info { align-self: center; padding: 0 16px; font-size: 12px; color: #64748b; white-space: nowrap; }
+  .info b { color: #0f172a; }
+  .legend { display: flex; flex-wrap: wrap; align-content: center; gap: 6px 14px; padding: 0 16px; max-width: 520px; }
+  .legend span { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #334155; white-space: nowrap; }
+  .legend i { width: 12px; height: 12px; border-radius: 50%; display: inline-block; }
 
   /* ปุ่มหมวดโมเดล (เปิดแกลเลอรี) */
   .cat {

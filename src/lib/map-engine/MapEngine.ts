@@ -2,18 +2,12 @@
 // รับข้อมูลเข้าผ่าน method (syncAssets, setMode, setPlacing ...)
 // และส่งเหตุการณ์ออกผ่าน events (onSelect, onPlace, onMove ...)
 import * as THREE from 'three';
-import type { Asset, AssetKind, AssetStatus, Site } from '../domain/types';
+import type { Asset, AssetKind, Site } from '../domain/types';
 import { MODELS } from '../domain/catalog';
-import { buildModel, setStatusColor, disposeModel } from './models';
+import { buildModel, setStatusColor, disposeModel, addAndon } from './models';
 import { footprint, snapAxis } from '../domain/geometry';
 import { theme } from './theme';
 
-export const STATUS_COLOR: Record<AssetStatus, number> = {
-  running: 0x16a34a,
-  idle: 0xf59e0b,
-  alarm: 0xdc2626,
-  offline: 0x94a3b8
-};
 
 const VIEW_SIZE = 30; // ครึ่งความสูงของมุมมองเมื่อ zoom = 1 (เมตร)
 const ELEVATION = Math.atan(1 / Math.SQRT2); // มุม isometric มาตรฐาน ~35.26°
@@ -53,6 +47,7 @@ export class MapEngine {
   private assetGroup = new THREE.Group();
   private assetMeshes = new Map<string, THREE.Group>();
   private assetData = new Map<string, Asset>();
+  private assetColor = new Map<string, string>();
   private siteSize = { w: 60, d: 40 };
   private grids: THREE.LineSegments[] = [];
   private gridVisible = true;
@@ -112,6 +107,7 @@ export class MapEngine {
     sc.updateProjectionMatrix();
     this.scene.add(sun);
     this.scene.add(this.siteGroup, this.assetGroup);
+    this.scene.add(this.frameGroup);
 
     this.camera = new THREE.OrthographicCamera(-1, 1, 1, -1, -500, 500);
 
@@ -181,8 +177,11 @@ export class MapEngine {
 
   // ================= asset =================
 
-  /** ทำให้โมเดลบนผังตรงกับข้อมูลล่าสุด (เพิ่ม / แก้ / ลบ) */
-  syncAssets(assets: Asset[]) {
+  /**
+   * ทำให้โมเดลบนผังตรงกับข้อมูลล่าสุด (เพิ่ม / แก้ / ลบ)
+   * colors = สีไฟ Andon ที่ต้องแสดงของแต่ละเครื่อง (#rrggbb) คำนวณจาก store (ByLine / ByStation)
+   */
+  syncAssets(assets: Asset[], colors: Record<string, string> = {}) {
     const alive = new Set<string>();
     for (const a of assets) {
       alive.add(a.id);
@@ -207,9 +206,22 @@ export class MapEngine {
       // ยกสูงต่างกันเล็กน้อยต่อชิ้น กันผิวกระพริบตอนวางซ้อน (z-fighting)
       model.position.set(a.x, jitter(a.id), a.z);
       model.rotation.y = (a.rot * Math.PI) / 2;
-      if (!prev || prev.status !== a.status || prev.kind !== a.kind) {
-        setStatusColor(model, STATUS_COLOR[a.status]);
+      // ติด / ถอดเสาไฟ Andon ตามการตั้งค่าของเครื่อง
+      const rebuilt = !prev || prev.kind !== a.kind;
+      const hasAndon = model.children.some((c) => c.userData.andonGroup);
+      if (a.andon && !hasAndon) addAndon(model, a.kind);
+      if (!a.andon && hasAndon) {
+        for (const c of [...model.children]) {
+          if (!c.userData.andonGroup) continue;
+          model.remove(c);
+          disposeModel(c);
+        }
       }
+      const color = colors[a.id] ?? '#94a3b8';
+      if (a.andon && (rebuilt || !hasAndon || this.assetColor.get(a.id) !== color)) {
+        setStatusColor(model, parseInt(color.slice(1), 16));
+      }
+      this.assetColor.set(a.id, color);
       this.assetData.set(a.id, { ...a });
     }
     for (const [id, model] of this.assetMeshes) {
@@ -218,8 +230,10 @@ export class MapEngine {
       disposeModel(model);
       this.assetMeshes.delete(id);
       this.assetData.delete(id);
+      this.assetColor.delete(id);
     }
     this.refreshOutline();
+    this.refreshHighlight();
   }
 
   setSelected(id: string | null) {
@@ -243,6 +257,71 @@ export class MapEngine {
     this.outline.position.y = def.h / 2;
     this.outline.renderOrder = 10;
     model.add(this.outline);
+  }
+
+  // ================= ไฮไลต์ไลน์ =================
+
+  private highlightIds: string[] = [];
+  private highlightColor = '#7c3aed';
+  private highlightOutlines: THREE.LineSegments[] = [];
+  private frameGroup = new THREE.Group();
+
+  /** ไฮไลต์หลายเครื่องพร้อมกัน (เช่น สมาชิกทั้งหมดของไลน์ที่เลือก) */
+  setHighlighted(ids: string[], color: string) {
+    this.highlightIds = ids;
+    this.highlightColor = color;
+    this.refreshHighlight();
+  }
+
+  private refreshHighlight() {
+    for (const o of this.highlightOutlines) {
+      o.parent?.remove(o);
+      o.geometry.dispose();
+      (o.material as THREE.Material).dispose();
+    }
+    this.highlightOutlines = [];
+    const mat = () => new THREE.LineBasicMaterial({ color: this.highlightColor, depthTest: false });
+    for (const id of this.highlightIds) {
+      const model = this.assetMeshes.get(id);
+      const a = this.assetData.get(id);
+      if (!model || !a) continue;
+      const def = MODELS[a.kind] ?? { w: a.w, d: a.d, h: 1 };
+      const o = new THREE.LineSegments(
+        new THREE.EdgesGeometry(new THREE.BoxGeometry(def.w + 0.16, def.h + 0.16, def.d + 0.16)),
+        mat()
+      );
+      o.position.y = def.h / 2;
+      o.renderOrder = 9;
+      model.add(o);
+      this.highlightOutlines.push(o);
+    }
+  }
+
+  /** กรอบไลน์บนพื้น (สี่เหลี่ยมล้อมสมาชิก) */
+  setLineFrames(frames: { x0: number; z0: number; x1: number; z1: number; color: string; strong: boolean }[]) {
+    for (const c of [...this.frameGroup.children]) {
+      this.frameGroup.remove(c);
+      const m = c as THREE.Mesh;
+      m.geometry.dispose();
+      (m.material as THREE.Material).dispose();
+    }
+    for (const f of frames) {
+      const w = f.x1 - f.x0;
+      const d = f.z1 - f.z0;
+      const cx = (f.x0 + f.x1) / 2;
+      const cz = (f.z0 + f.z1) / 2;
+      const fill = new THREE.Mesh(
+        new THREE.PlaneGeometry(w, d),
+        new THREE.MeshBasicMaterial({ color: f.color, transparent: true, opacity: f.strong ? 0.12 : 0.06, depthWrite: false })
+      );
+      fill.rotation.x = -Math.PI / 2;
+      fill.position.set(cx, 0.01, cz);
+      const pts = [f.x0, 0.02, f.z0, f.x1, 0.02, f.z0, f.x1, 0.02, f.z1, f.x0, 0.02, f.z1];
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
+      const border = new THREE.LineLoop(geo, new THREE.LineBasicMaterial({ color: f.color, transparent: true, opacity: f.strong ? 1 : 0.6 }));
+      this.frameGroup.add(fill, border);
+    }
   }
 
   // ================= โหมดแก้ไข =================
