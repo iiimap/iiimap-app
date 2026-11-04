@@ -16,7 +16,7 @@
 
   let { engine }: { engine?: MapEngine } = $props();
 
-  const VERSION = 'v0.19';
+  const VERSION = 'v0.21';
   const SAVE_TEXT = { saved: 'บันทึกแล้ว', saving: 'กำลังบันทึก…', error: 'บันทึกไม่สำเร็จ' };
 
   const TABS = [
@@ -381,7 +381,8 @@
   .kpiwrap .kpichip { width: 100%; padding-right: 24px; }
   /* ปุ่มลบ: ซ่อนไว้ ชี้เมาส์แล้วค่อยโผล่ */
   .kpidel {
-    position: absolute; top: 4px; right: 3px; width: 20px; height: 22px; border: 0; border-radius: 5px;
+    position: absolute; top: 50%; right: 4px; transform: translateY(-50%);
+    width: 20px; height: 20px; padding: 0; display: grid; place-items: center; border: 0; border-radius: 5px;
     background: transparent; color: #94a3b8; font-size: 15px; line-height: 1; cursor: pointer;
     opacity: 0; pointer-events: none; transition: opacity 0.12s;
   }

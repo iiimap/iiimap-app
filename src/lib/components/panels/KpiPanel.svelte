@@ -210,7 +210,8 @@
   .card { position: relative; }
   /* ปุ่มลบ: ซ่อนไว้ ชี้เมาส์ที่การ์ดแล้วค่อยโผล่ */
   .del {
-    position: absolute; top: 6px; right: 6px; width: 22px; height: 22px; border: 0; border-radius: 6px;
+    position: absolute; top: 6px; right: 6px; width: 22px; height: 22px; padding: 0;
+    display: grid; place-items: center; border: 0; border-radius: 6px;
     background: #fff; color: #94a3b8; font-size: 16px; line-height: 1; cursor: pointer;
     opacity: 0; pointer-events: none; transition: opacity 0.12s;
   }
