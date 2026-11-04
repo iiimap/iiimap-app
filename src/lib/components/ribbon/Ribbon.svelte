@@ -16,7 +16,7 @@
 
   let { engine }: { engine?: MapEngine } = $props();
 
-  const VERSION = 'v0.21';
+  const VERSION = 'v0.22';
   const SAVE_TEXT = { saved: 'บันทึกแล้ว', saving: 'กำลังบันทึก…', error: 'บันทึกไม่สำเร็จ' };
 
   const TABS = [
@@ -255,7 +255,7 @@
                   <span>{it.kpi.name}</span><b>{fmtNum(it.value)}</b><small>{it.kpi.unit}</small>
                 </button>
                 {#if editing}
-                  <button class="kpidel" title="ลบ KPI นี้" aria-label="ลบ {it.kpi.name}" onclick={() => guarded.deleteKpi(it.kpi.id)}>×</button>
+                  <button class="kpidel" title="ลบ KPI นี้" aria-label="ลบ {it.kpi.name}" onclick={() => guarded.deleteKpi(it.kpi.id)}><Icon name="close" size={12} /></button>
                 {/if}
               </div>
             {/each}

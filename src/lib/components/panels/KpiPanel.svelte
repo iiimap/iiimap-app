@@ -5,6 +5,7 @@
   import { PERIODS, KPI_UNITS, BETTER_LABEL, computeKpis, fmtNum } from '../../domain/kpi';
   import { app, actions, kpiFormDirty } from '../../stores/site.svelte';
   import { guarded } from '../../stores/guarded';
+  import Icon from '../ribbon/Icon.svelte';
 
   let editable = $derived(app.mode === 'edit');
   let result = $derived(computeKpis(app.site, app.kpiScope, app.kpiPeriod));
@@ -164,7 +165,7 @@
           {/if}
         </button>
         {#if editable}
-          <button class="del" title="ลบ KPI นี้" aria-label="ลบ {it.kpi.name}" onclick={() => guarded.deleteKpi(it.kpi.id)}>×</button>
+          <button class="del" title="ลบ KPI นี้" aria-label="ลบ {it.kpi.name}" onclick={() => guarded.deleteKpi(it.kpi.id)}><Icon name="close" size={13} /></button>
         {/if}
         {#if open}{@render editor()}{/if}
       </section>
