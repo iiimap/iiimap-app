@@ -1,5 +1,5 @@
 // คำสั่งลบ / ยกเลิกที่ต้องถามย้ำก่อนทุกครั้ง (ปุ่มและคีย์ลัดทุกที่เรียกผ่านไฟล์นี้)
-import { app, actions } from './site.svelte';
+import { app, actions, kpiFormDirty } from './site.svelte';
 import { ask } from './confirm.svelte';
 
 const assetName = (id: string) => app.site.assets.find((a) => a.id === id)?.name ?? '';
@@ -71,10 +71,27 @@ export const guarded = {
     if (await ask({ title: `ลบ KPI "${k.name}"?`, message: 'KPI นี้และสูตรจะถูกลบ (กด Ctrl+Z เพื่อย้อนกลับได้)' })) actions.deleteKpi(id);
   },
 
-  async cancelKpiDraft() {
-    if (!app.kpiDraft) return;
-    if (await ask({ title: `ยกเลิกการสร้าง KPI "${app.kpiDraft.name}"?`, message: 'KPI ที่ยังไม่บันทึกจะหายไป', confirmText: 'ยกเลิก KPI' }))
-      actions.cancelKpiDraft();
+  /** ปิดฟอร์ม KPI: ถ้ามีการแก้ที่ยังไม่บันทึก ถามก่อน คืน true ถ้าปิดแล้ว */
+  async closeKpiForm(): Promise<boolean> {
+    const f = app.kpiForm;
+    if (!f) return true;
+    if (kpiFormDirty()) {
+      const ok = await ask(
+        f.id
+          ? { title: `ยกเลิกการแก้ไข "${f.name || 'KPI'}"?`, message: 'สิ่งที่แก้ไว้แต่ยังไม่บันทึกจะหายไป', confirmText: 'ยกเลิกการแก้ไข' }
+          : { title: 'ยกเลิกการสร้าง KPI?', message: 'KPI ที่ยังไม่บันทึกจะหายไป', confirmText: 'ยกเลิก KPI' }
+      );
+      if (!ok) return false;
+    }
+    actions.closeKpiForm();
+    return true;
+  },
+
+  /** เปิด KPI อื่น: ปิดฟอร์มเดิมก่อน (ถามถ้ายังไม่บันทึก) / กด KPI เดิมซ้ำ = ปิด */
+  async openKpi(id: string) {
+    const same = app.kpiForm?.id === id;
+    if (!(await guarded.closeKpiForm())) return;
+    if (!same) actions.openKpi(id);
   },
 
   async resetKpis() {

@@ -5,5 +5,6 @@ export const theme = {
   floorEdge: 0x94a3b8,
   gridMinor: 0xe8ecf1,
   gridMajor: 0xcfd6df,
-  selection: 0x2563eb
+  selection: 0x2563eb,
+  blocked: 0xdc2626 // เงาตอนวางทับโมเดลอื่น
 };

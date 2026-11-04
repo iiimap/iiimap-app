@@ -57,6 +57,7 @@ export class MapEngine {
   private placing: AssetKind | null = null;
   private placeRot = 0;
   private ghost: THREE.Group | null = null;
+  private ghostBlocked = false;
   private ghostMat = new THREE.MeshStandardMaterial({
     color: theme.selection,
     transparent: true,
@@ -234,6 +235,7 @@ export class MapEngine {
     }
     this.refreshOutline();
     this.refreshHighlight();
+    if (this.ghost?.visible) this.checkGhostBlocked(); // เพิ่งวางไป เงาที่จุดเดิมต้องเป็นสีแดงทันที
   }
 
   setSelected(id: string | null) {
@@ -379,6 +381,33 @@ export class MapEngine {
     const s = this.snap(this.ghost.position, c.w, c.d, rot);
     this.ghost.position.x = s.x;
     this.ghost.position.z = s.z;
+    this.checkGhostBlocked();
+  }
+
+  /**
+   * ตรวจว่าตำแหน่งที่จะวางกินพื้นที่ของโมเดลที่วางอยู่แล้วหรือไม่
+   * ทับ = เงาเป็นสีแดง และคลิกวางไม่ได้ (ชิดขอบกันพอดีวางได้)
+   */
+  private checkGhostBlocked() {
+    if (!this.ghost || !this.placing) return;
+    const c = MODELS[this.placing];
+    const [gw, gd] = footprint(c.w, c.d, this.ghostRot());
+    const gx = this.ghost.position.x;
+    const gz = this.ghost.position.z;
+    const EPS = 1e-6;
+    let blocked = false;
+    for (const a of this.assetData.values()) {
+      const [aw, ad] = footprint(a.w, a.d, a.rot);
+      const overlapX = Math.abs(gx - a.x) < (gw + aw) / 2 - EPS;
+      const overlapZ = Math.abs(gz - a.z) < (gd + ad) / 2 - EPS;
+      if (overlapX && overlapZ) {
+        blocked = true;
+        break;
+      }
+    }
+    this.ghostBlocked = blocked;
+    this.ghostMat.color.setHex(blocked ? theme.blocked : theme.selection);
+    this.renderer.domElement.style.cursor = blocked ? 'not-allowed' : '';
   }
 
   /** snap ตำแหน่งกึ่งกลางของวัตถุขนาด w×d ที่หมุน rot */
@@ -538,6 +567,7 @@ export class MapEngine {
         this.ghost.position.x = s.x;
         this.ghost.position.z = s.z;
         this.ghost.visible = true;
+        this.checkGhostBlocked();
       }
     }
 
@@ -576,7 +606,8 @@ export class MapEngine {
 
     // คลิก (ไม่ได้ลาก)
     if (this.mode === 'edit' && this.placing && this.ghost?.visible) {
-      this.events.onPlace?.(this.ghost.position.x, this.ghost.position.z, this.ghostRot());
+      // ทับโมเดลที่วางอยู่ = วางไม่ได้
+      if (!this.ghostBlocked) this.events.onPlace?.(this.ghost.position.x, this.ghost.position.z, this.ghostRot());
     } else {
       this.events.onSelect?.(this.assetAt(e.clientX, e.clientY));
     }

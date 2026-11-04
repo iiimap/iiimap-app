@@ -1,124 +1,116 @@
 <script lang="ts">
-  // แท็บ KPIs: ดูค่า KPI (monitor) + สร้าง / แก้ชื่อ / แก้สูตร KPI เอง
-  // กล่องตั้งค่าเปิดเฉพาะ KPI ที่เลือก คลิกที่อื่นแล้วปิด
+  // แท็บ KPIs: ดูค่า KPI (monitor) + สร้าง / แก้ไข KPI ผ่านฟอร์มที่ต้องกดบันทึก
+  // กล่องตั้งค่าเปิดเฉพาะ KPI ที่เลือก คลิกที่อื่นแล้วปิด (ถ้ายังไม่บันทึก จะถามก่อน)
   import { METRIC_VARIABLES, checkFormula, evalFormula, SAMPLE_VALUES } from '../../domain/formula';
-  import { PERIODS, computeKpis, fmtNum } from '../../domain/kpi';
-  import type { Kpi } from '../../domain/types';
-  import { app, actions } from '../../stores/site.svelte';
+  import { PERIODS, KPI_UNITS, BETTER_LABEL, computeKpis, fmtNum } from '../../domain/kpi';
+  import { app, actions, kpiFormDirty } from '../../stores/site.svelte';
   import { guarded } from '../../stores/guarded';
 
   let editable = $derived(app.mode === 'edit');
   let result = $derived(computeKpis(app.site, app.kpiScope, app.kpiPeriod));
   let scopeName = $derived(app.kpiScope === 'site' ? 'ทั้งโรงงาน' : (app.site.lines.find((l) => l.id === app.kpiScope)?.name ?? 'ทั้งโรงงาน'));
+  let dirty = $derived(kpiFormDirty());
 
   // ไลน์ที่เลือกถูกลบไปแล้ว: กลับไปดูทั้งโรงงาน
   $effect(() => {
     if (app.kpiScope !== 'site' && !app.site.lines.some((l) => l.id === app.kpiScope)) app.kpiScope = 'site';
   });
 
-  function toggle(id: string) {
-    if (app.kpiDraft) return;
-    app.activeKpiId = app.activeKpiId === id ? null : id;
-  }
+  // หน่วยในดรอปดาวน์ (ถ้า KPI เดิมใช้หน่วยอื่น ก็แสดงไว้ให้เลือกด้วย)
+  let units = $derived(
+    app.kpiForm && !KPI_UNITS.some((u) => u.value === app.kpiForm!.unit)
+      ? [...KPI_UNITS, { value: app.kpiForm.unit, label: app.kpiForm.unit }]
+      : KPI_UNITS
+  );
 
-  // แก้ KPI ที่บันทึกแล้ว: ลงประวัติย้อนกลับทีละช่อง / KPI ใหม่: ยังไม่ลงประวัติ
-  const begin = (k: Kpi) => k !== app.kpiDraft && actions.beginEdit();
-  const commit = (k: Kpi) => k !== app.kpiDraft && actions.commitEdit();
-
-  function insertVar(k: Kpi, id: string) {
-    begin(k);
-    const cur = k.formula.trim();
-    k.formula = cur ? `${cur} ${id}` : id;
-    commit(k);
+  function insertVar(id: string) {
+    const f = app.kpiForm;
+    if (!f) return;
+    const cur = f.formula.trim();
+    f.formula = cur ? `${cur} ${id}` : id;
     app.kpiError = '';
   }
 
-  function setTarget(k: Kpi, raw: string) {
-    begin(k);
-    const v = raw.trim() === '' ? null : Number(raw);
-    k.target = v === null || Number.isFinite(v) ? v : k.target;
-    commit(k);
-  }
-
-  function setBetter(k: Kpi, better: 'lower' | 'higher') {
-    begin(k);
-    k.better = better;
-    commit(k);
-  }
-
-  // คลิกนอกแผง = ปิดกล่องตั้งค่า (KPI ใหม่ที่ยังไม่บันทึกต้องกดบันทึก/ยกเลิกก่อน)
+  // คลิกนอกแผง = ปิดกล่องตั้งค่า (ถ้ามีการแก้ที่ยังไม่บันทึก จะถามก่อน)
   function onOutside(e: PointerEvent) {
-    if (!app.activeKpiId || app.kpiDraft) return;
+    if (!app.kpiForm) return;
     if ((e.target as HTMLElement).closest('.kpipanel, .ribbon, .backdrop, .dd-panel')) return;
-    app.activeKpiId = null;
+    guarded.closeKpiForm();
   }
 </script>
 
 <svelte:window onpointerdown={onOutside} />
 
-{#snippet editor(k: Kpi, isNew: boolean)}
-  {@const err = checkFormula(k.formula)}
-  <div class="editor">
-    <label>
-      ชื่อ KPI
-      <input value={k.name} disabled={!editable} onfocus={() => begin(k)} onchange={() => commit(k)}
-        oninput={(e) => { k.name = e.currentTarget.value; app.kpiError = ''; }} />
-    </label>
-    <label>
-      สูตร
-      <input class="mono" class:bad={!!err && !!k.formula.trim()} value={k.formula} disabled={!editable} spellcheck="false"
-        placeholder="เช่น repairTime / failures" onfocus={() => begin(k)} onchange={() => commit(k)}
-        oninput={(e) => { k.formula = e.currentTarget.value; app.kpiError = ''; }} />
-      {#if err}
-        <span class="err">{err}</span>
-      {:else}
-        <span class="ok">ตัวอย่าง (ค่าทดสอบ) = <b>{fmtNum(evalFormula(k.formula, SAMPLE_VALUES))}</b></span>
-      {/if}
-    </label>
-    {#if editable}
-      <div class="vars">
-        <span class="lbl">ตัวแปร (กดเพื่อใส่ในสูตร)</span>
-        {#each METRIC_VARIABLES as v}
-          <button title="{v.label}" onclick={() => insertVar(k, v.id)}><code>{v.id}</code><span>{v.label}</span></button>
-        {/each}
-        <span class="lbl">ใช้ + − * / และวงเล็บ ( ) ได้</span>
-      </div>
-    {/if}
-    <div class="row3">
+{#snippet editor()}
+  {#if app.kpiForm}
+    {@const f = app.kpiForm}
+    {@const err = f.formula.trim() ? checkFormula(f.formula) : 'ยังไม่ได้ใส่สูตร'}
+    <div class="editor">
       <label>
-        หน่วย
-        <input value={k.unit} placeholder="นาที, %" disabled={!editable} onfocus={() => begin(k)} onchange={() => commit(k)}
-          oninput={(e) => (k.unit = e.currentTarget.value)} />
+        ชื่อ KPI
+        <input bind:value={app.kpiForm.name} disabled={!editable} placeholder="เช่น MTTR" oninput={() => (app.kpiError = '')} />
       </label>
       <label>
-        เป้าหมาย
-        <input type="number" value={k.target ?? ''} placeholder="ไม่ตั้ง" disabled={!editable}
-          onchange={(e) => setTarget(k, e.currentTarget.value)} />
-      </label>
-    </div>
-    <div class="better" role="group" aria-label="ค่าแบบไหนดี">
-      <button class:on={k.better === 'lower'} disabled={!editable} onclick={() => setBetter(k, 'lower')}>▼ ค่าต่ำดี</button>
-      <button class:on={k.better === 'higher'} disabled={!editable} onclick={() => setBetter(k, 'higher')}>▲ ค่าสูงดี</button>
-    </div>
-    {#if editable}
-      <div class="foot">
-        {#if isNew}
-          {#if app.kpiError}<p class="error">{app.kpiError}</p>{/if}
-          <button class="ghostbtn" onclick={() => guarded.cancelKpiDraft()}>ยกเลิก</button>
-          <button class="primary" onclick={() => actions.saveKpiDraft()}>บันทึก KPI</button>
+        สูตร
+        <input class="mono" class:bad={!!err && !!f.formula.trim()} bind:value={app.kpiForm.formula} disabled={!editable} spellcheck="false"
+          placeholder="เช่น repairTime / failures" oninput={() => (app.kpiError = '')} />
+        {#if err}
+          <span class="err">{err}</span>
         {:else}
-          <button class="danger" onclick={() => guarded.deleteKpi(k.id)}>ลบ KPI นี้</button>
+          <span class="ok">ตัวอย่าง (ค่าทดสอบ) = <b>{fmtNum(evalFormula(f.formula, SAMPLE_VALUES))}</b></span>
         {/if}
+      </label>
+      {#if editable}
+        <div class="vars">
+          <span class="lbl">ตัวแปร (กดเพื่อใส่ในสูตร)</span>
+          {#each METRIC_VARIABLES as v}
+            <button title={v.label} onclick={() => insertVar(v.id)}><code>{v.id}</code><span>{v.label}</span></button>
+          {/each}
+          <span class="lbl">ใช้ + − * / และวงเล็บ ( ) ได้</span>
+        </div>
+      {/if}
+      <div class="row2">
+        <label>
+          หน่วย
+          <select bind:value={app.kpiForm.unit} disabled={!editable}>
+            {#each units as u}
+              <option value={u.value}>{u.label}</option>
+            {/each}
+          </select>
+        </label>
+        <label>
+          เป้าหมาย
+          <input bind:value={app.kpiForm.targetText} inputmode="decimal" placeholder="ไม่ตั้งเป้า" disabled={!editable}
+            oninput={() => (app.kpiError = '')} />
+        </label>
       </div>
-    {/if}
-  </div>
+      <div class="better" role="group" aria-label="ทิศทางที่ดี">
+        <span class="lbl">ทิศทางที่ดี</span>
+        <div class="seg">
+          <button class:on={f.better === 'lower'} disabled={!editable} onclick={() => (f.better = 'lower')}>▼ {BETTER_LABEL.lower}</button>
+          <button class:on={f.better === 'higher'} disabled={!editable} onclick={() => (f.better = 'higher')}>▲ {BETTER_LABEL.higher}</button>
+        </div>
+      </div>
+      {#if editable}
+        <div class="foot">
+          {#if app.kpiError}<p class="error">{app.kpiError}</p>{/if}
+          {#if f.id}
+            <button class="danger" onclick={() => guarded.deleteKpi(f.id!)}>ลบ KPI</button>
+          {/if}
+          <button class="ghostbtn" onclick={() => guarded.closeKpiForm()}>ยกเลิก</button>
+          <button class="primary" disabled={!!f.id && !dirty} onclick={() => actions.saveKpiForm()}>บันทึก</button>
+        </div>
+        {#if f.id && dirty}<p class="unsaved">● มีการแก้ไขที่ยังไม่บันทึก</p>{/if}
+      {/if}
+    </div>
+  {/if}
 {/snippet}
 
 <aside class="kpipanel">
   <header>
     <h3>KPIs</h3>
-    {#if editable && !app.kpiDraft}
-      <button class="primary" onclick={() => actions.startKpiDraft()}>+ สร้าง KPI</button>
+    {#if editable && !(app.kpiForm && !app.kpiForm.id)}
+      <button class="primary" onclick={async () => (await guarded.closeKpiForm()) && actions.startKpiDraft()}>+ สร้าง KPI</button>
     {/if}
   </header>
 
@@ -138,17 +130,17 @@
   <p class="meta">{scopeName} · นับจากเครื่องที่เปิด Andon <b>{result.machines}</b> เครื่อง</p>
 
   <div class="scroll">
-    {#if app.kpiDraft}
+    {#if app.kpiForm && !app.kpiForm.id}
       <section class="card open isnew">
         <div class="newtag">KPI ใหม่ · ยังไม่บันทึก</div>
-        {@render editor(app.kpiDraft, true)}
+        {@render editor()}
       </section>
     {/if}
 
     {#each result.items as it (it.kpi.id)}
-      {@const open = app.activeKpiId === it.kpi.id}
+      {@const open = app.kpiForm?.id === it.kpi.id}
       <section class="card {it.state}" class:open>
-        <button class="sum" onclick={() => toggle(it.kpi.id)} title="กดเพื่อตั้งค่า">
+        <button class="sum" onclick={() => guarded.openKpi(it.kpi.id)} title="กดเพื่อตั้งค่า">
           <span class="name">{it.kpi.name}</span>
           <span class="val">{fmtNum(it.value)} <small>{it.kpi.unit}</small></span>
           {#if it.kpi.target !== null}
@@ -158,10 +150,10 @@
             <span class="target">ไม่ได้ตั้งเป้า</span>
           {/if}
         </button>
-        {#if open}{@render editor(it.kpi, false)}{/if}
+        {#if open}{@render editor()}{/if}
       </section>
     {:else}
-      {#if !app.kpiDraft}<p class="empty">ยังไม่มี KPI {#if editable}กด <b>+ สร้าง KPI</b>{/if}</p>{/if}
+      {#if !app.kpiForm}<p class="empty">ยังไม่มี KPI {#if editable}กด <b>+ สร้าง KPI</b>{/if}</p>{/if}
     {/each}
 
     <section class="settings">
@@ -230,15 +222,22 @@
   .vars button:hover { border-color: #bfdbfe; background: #eff6ff; }
   .vars code { font-size: 12px; color: #1d4ed8; }
   .vars span { font-size: 11.5px; color: #64748b; }
-  .row3 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-  .better { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+  .row2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
+  .row2 label { min-width: 0; }
+  .row2 input, .row2 select { width: 100%; box-sizing: border-box; }
+  select { font: 13px system-ui, sans-serif; padding: 7px 6px; border: 1px solid #e2e8f0; border-radius: 7px; background: #fff; color: #0f172a; }
+  .better { display: flex; flex-direction: column; gap: 4px; }
+  .better .lbl { font-size: 11.5px; color: #64748b; }
+  .seg { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
   .better button { border: 1px solid #e2e8f0; background: #fff; border-radius: 6px; padding: 6px; font: 12px system-ui, sans-serif; color: #334155; cursor: pointer; }
   .better button.on { border-color: #2563eb; background: #eff6ff; color: #1d4ed8; font-weight: 600; }
   .better button:disabled:not(.on) { opacity: 0.5; cursor: default; }
   .foot { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 6px; padding-top: 8px; border-top: 1px solid #f1f5f9; }
   .error { flex-basis: 100%; margin: 0; font-size: 12px; color: #dc2626; }
   .primary { border: 0; background: #2563eb; color: #fff; border-radius: 7px; padding: 7px 12px; font: 600 12px system-ui, sans-serif; cursor: pointer; }
-  .primary:hover { background: #1d4ed8; }
+  .primary:hover:not(:disabled) { background: #1d4ed8; }
+  .primary:disabled { opacity: 0.4; cursor: default; }
+  .unsaved { margin: 0; font-size: 11.5px; color: #b45309; text-align: right; }
   .ghostbtn { border: 1px solid #e2e8f0; background: #fff; color: #334155; border-radius: 7px; padding: 7px 12px; font: 12px system-ui, sans-serif; cursor: pointer; }
   .danger { margin-right: auto; border: 1px solid #fecaca; background: #fff; color: #dc2626; border-radius: 7px; padding: 7px 12px; font: 12px system-ui, sans-serif; cursor: pointer; }
   .danger:hover { background: #fef2f2; }

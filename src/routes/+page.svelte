@@ -9,6 +9,7 @@
   import { guarded } from '../lib/stores/guarded';
   import AndonPanel from '../lib/components/panels/AndonPanel.svelte';
   import KpiPanel from '../lib/components/panels/KpiPanel.svelte';
+  import Toast from '../lib/components/Toast.svelte';
   import type { MapEngine } from '../lib/map-engine/MapEngine';
   import { app, actions } from '../lib/stores/site.svelte';
 
@@ -90,6 +91,7 @@
     {#if app.ribbonTab === 'andon'}<AndonPanel />{/if}
     {#if app.ribbonTab === 'kpi'}<KpiPanel />{/if}
     <Properties />
+    <Toast />
   </div>
   <StatusBar {engine} />
 </main>

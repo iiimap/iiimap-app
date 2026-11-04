@@ -10,6 +10,16 @@ import { checkFormula } from '../domain/formula';
 export type Mode = 'view' | 'edit';
 export type RibbonTab = 'home' | 'insert' | 'line' | 'andon' | 'kpi' | 'view';
 
+/** ฟอร์มแก้ไข KPI: แก้ในฟอร์มก่อน กดบันทึกแล้วค่อยเปลี่ยนค่าจริง */
+export interface KpiForm {
+  id: string | null; // null = KPI ใหม่
+  name: string;
+  formula: string;
+  unit: string;
+  targetText: string; // ว่างได้ = ไม่ตั้งเป้า
+  better: 'lower' | 'higher';
+}
+
 
 
 function loadRecent(): string[] {
@@ -41,9 +51,9 @@ export const app = $state({
   // KPIs
   kpiScope: 'site' as string, // 'site' = ทั้งโรงงาน หรือ id ของไลน์
   kpiPeriod: 'day' as KpiPeriod,
-  activeKpiId: null as string | null, // KPI ที่เปิดกล่องตั้งค่าอยู่
-  kpiDraft: null as Kpi | null, // KPI ใหม่ที่ยังไม่บันทึก
+  kpiForm: null as KpiForm | null, // กล่องตั้งค่า KPI ที่เปิดอยู่ (แก้แล้วต้องกดบันทึก)
   kpiError: '',
+  toast: '', // ข้อความแจ้งเตือนสั้นๆ ด้านล่างผัง
   saveState: 'saved' as 'saved' | 'saving' | 'error'
 });
 
@@ -115,7 +125,7 @@ function restore(json: string) {
   app.site.andonStates = s.andonStates;
   app.site.metrics = s.metrics;
   app.site.kpis = s.kpis;
-  if (!app.site.kpis.some((k) => k.id === app.activeKpiId)) app.activeKpiId = null;
+  if (app.kpiForm?.id && !app.site.kpis.some((k) => k.id === app.kpiForm!.id)) app.kpiForm = null;
   if (!app.site.assets.some((a) => a.id === app.selectedId)) app.selectedId = null;
   if (!app.site.lines.some((l) => l.id === app.activeLineId)) app.activeLineId = null;
   if (!app.site.lines.some((l) => l.id === app.lineAddMode)) app.lineAddMode = null;
@@ -134,6 +144,7 @@ function checkpoint() {
 }
 
 let pendingEdit: string | null = null;
+let pendingMove: string | null = null;
 
 // ================= คลิปบอร์ด (Copy / Cut / Paste) =================
 let clipboard: Asset | null = null;
@@ -162,18 +173,70 @@ function snapAsset(a: { x: number; z: number; w: number; d: number; rot: number 
   a.z = snapAxis(a.z, fd, app.site.depth);
 }
 
-/** ตำแหน่งชิดข้างของชิ้นเดิม: ลองขวา → ซ้าย → หน้า → หลัง เอาด้านแรกที่ไม่หลุดขอบผัง */
-function besideOf(a: Asset) {
+// ================= ห้ามทับ =================
+type Box = { x: number; z: number; w: number; d: number; rot: number };
+
+/** กินพื้นที่ของโมเดลอื่นหรือไม่ (ชิดขอบพอดีไม่นับว่าทับ) */
+function overlapsOthers(b: Box, ignoreId?: string): boolean {
+  const [bw, bd] = footprint(b.w, b.d, b.rot);
+  const EPS = 1e-6;
+  return app.site.assets.some((o) => {
+    if (o.id === ignoreId) return false;
+    const [ow, od] = footprint(o.w, o.d, o.rot);
+    return Math.abs(b.x - o.x) < (bw + ow) / 2 - EPS && Math.abs(b.z - o.z) < (bd + od) / 2 - EPS;
+  });
+}
+
+/**
+ * หาตำแหน่งว่างให้โมเดล (ใช้ตอนวางจากคลิปบอร์ด)
+ * ลองตามลำดับ: ตำแหน่งที่ต้องการ → ชิดขวา / ซ้าย / หน้า / หลัง ของชิ้นอ้างอิง → ขยายวงออกไปทีละ 1 ม.
+ */
+function findFreeSpot(b: Box, prefer: { x: number; z: number }[]): { x: number; z: number } | null {
+  const tryAt = (x: number, z: number) => {
+    const c = { ...b, x, z };
+    snapAsset(c);
+    return overlapsOthers(c) ? null : { x: c.x, z: c.z };
+  };
+  for (const p of prefer) {
+    const ok = tryAt(p.x, p.z);
+    if (ok) return ok;
+  }
+  const o = prefer[0] ?? { x: b.x, z: b.z };
+  const maxR = Math.max(app.site.width, app.site.depth);
+  for (let r = 1; r <= maxR; r++) {
+    for (let dx = -r; dx <= r; dx++) {
+      for (const dz of [-r, r]) {
+        const ok = tryAt(o.x + dx, o.z + dz);
+        if (ok) return ok;
+      }
+    }
+    for (let dz = -r + 1; dz <= r - 1; dz++) {
+      for (const dx of [-r, r]) {
+        const ok = tryAt(o.x + dx, o.z + dz);
+        if (ok) return ok;
+      }
+    }
+  }
+  return null;
+}
+
+/** ตำแหน่งชิดข้างของชิ้นเดิม: ขวา → ซ้าย → หน้า → หลัง */
+function besideOf(a: Box) {
   const [fw, fd] = footprint(a.w, a.d, a.rot);
-  const hw = app.site.width / 2 - fw / 2;
-  const hd = app.site.depth / 2 - fd / 2;
-  const options = [
+  return [
     { x: a.x + fw, z: a.z },
     { x: a.x - fw, z: a.z },
     { x: a.x, z: a.z + fd },
     { x: a.x, z: a.z - fd }
   ];
-  return options.find((p) => Math.abs(p.x) <= hw && Math.abs(p.z) <= hd) ?? options[0];
+}
+
+// ================= แจ้งเตือนสั้นๆ (toast) =================
+let toastTimer: ReturnType<typeof setTimeout> | undefined;
+export function notify(text: string) {
+  app.toast = text;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => (app.toast = ''), 2500);
 }
 
 const find = (id: string) => app.site.assets.find((a) => a.id === id);
@@ -193,14 +256,26 @@ function replaceSite(site: Site) {
   app.activeLineId = null;
   app.lineAddMode = null;
   app.frameLines = [];
-  app.activeKpiId = null;
-  app.kpiDraft = null;
+  app.kpiForm = null;
   app.kpiScope = 'site';
   clearDraft();
   history.past = [];
   history.future = [];
   clipboard = null;
   clip.has = false;
+}
+
+export function kpiToForm(k: Kpi): KpiForm {
+  return { id: k.id, name: k.name, formula: k.formula, unit: k.unit, targetText: k.target === null ? '' : String(k.target), better: k.better };
+}
+
+/** ฟอร์ม KPI มีการแก้ที่ยังไม่บันทึกหรือไม่ (KPI ใหม่ถือว่ามีเสมอ) */
+export function kpiFormDirty(): boolean {
+  const f = app.kpiForm;
+  if (!f) return false;
+  const k = f.id ? app.site.kpis.find((x) => x.id === f.id) : undefined;
+  if (!k) return true;
+  return JSON.stringify(kpiToForm(k)) !== JSON.stringify($state.snapshot(f));
 }
 
 /** ตรวจ KPI ก่อนบันทึก: คืนข้อความปัญหา หรือ '' ถ้าใช้ได้ */
@@ -262,7 +337,6 @@ export const actions = {
     if (tab !== 'line') app.lineAddMode = null;
     // ออกจากแท็บ Line = ปิดกล่องตั้งค่าไลน์ (ยกเว้นไลน์ใหม่ที่ยังไม่บันทึก)
     if (tab !== 'line' && app.activeLineId !== app.draftLineId) app.activeLineId = null;
-    if (tab !== 'kpi' && !app.kpiDraft) app.activeKpiId = null;
     if (tab !== 'insert') app.placing = null;
   },
 
@@ -283,7 +357,6 @@ export const actions = {
     const kind = app.placing;
     const def = kind ? MODELS[kind] : undefined;
     if (!kind || !def) return;
-    checkpoint();
     const asset: Asset = {
       id: newId(),
       name: nextName(kind),
@@ -298,29 +371,44 @@ export const actions = {
       status: defaultStatus()
     };
     snapAsset(asset);
+    // กันไว้อีกชั้น (ปกติเงาสีแดงจะไม่ให้คลิกวางอยู่แล้ว)
+    if (overlapsOthers(asset)) return;
+    checkpoint();
     app.site.assets.push(asset);
     // ไม่เปิดแผงคุณสมบัติหลังวาง: จะเปิดเมื่อคลิกที่โมเดลเท่านั้น
   },
 
-  /** เริ่มลากย้าย: จดประวัติครั้งเดียวต่อการลาก 1 ครั้ง */
+  /** เริ่มลากย้าย: จำสถานะไว้ ลงประวัติครั้งเดียวเมื่อย้ายได้จริง */
   moveStart() {
-    checkpoint();
+    pendingMove = snapshot();
   },
 
+  /** ลากย้าย: ถ้าตำแหน่งใหม่ทับโมเดลอื่น โมเดลจะหยุดอยู่ตำแหน่งล่าสุดที่ว่าง */
   move(id: string, x: number, z: number) {
     const a = find(id);
-    if (a) {
-      a.x = x;
-      a.z = z;
+    if (!a) return;
+    if (overlapsOthers({ ...a, x, z }, id)) return;
+    if (pendingMove !== null) {
+      history.past.push(pendingMove);
+      if (history.past.length > HISTORY_LIMIT) history.past.shift();
+      history.future = [];
+      pendingMove = null;
     }
+    a.x = x;
+    a.z = z;
   },
 
   rotate(id: string) {
     const a = find(id);
     if (!a) return;
+    const next = { x: a.x, z: a.z, w: a.w, d: a.d, rot: (a.rot + 1) % 4 };
+    snapAsset(next);
+    if (overlapsOthers(next, id)) {
+      notify(`หมุน ${a.name} ไม่ได้ เพราะจะทับโมเดลข้างๆ`);
+      return;
+    }
     checkpoint();
-    a.rot = (a.rot + 1) % 4;
-    snapAsset(a);
+    Object.assign(a, next);
   },
 
   /** ขยาย/ลดทีละ 1 ม. ทั้งกว้างและลึก ไม่เล็กกว่า default และไม่ใหญ่เกินผัง */
@@ -333,10 +421,14 @@ export const actions = {
     if (w < base.w || d < base.d) return;
     const [fw, fd] = footprint(w, d, a.rot);
     if (fw > app.site.width || fd > app.site.depth) return;
+    const next = { x: a.x, z: a.z, w, d, rot: a.rot };
+    snapAsset(next);
+    if (step > 0 && overlapsOthers(next, id)) {
+      notify(`ขยาย ${a.name} ไม่ได้ เพราะจะทับโมเดลข้างๆ`);
+      return;
+    }
     checkpoint();
-    a.w = w;
-    a.d = d;
-    snapAsset(a);
+    Object.assign(a, next);
   },
 
   /** เริ่มแก้ค่าในช่องกรอก (ชื่อ สูตร สี ...): จำสถานะไว้ก่อน */
@@ -548,48 +640,63 @@ export const actions = {
   },
 
   // ---------- KPIs ----------
-  /** สร้าง KPI ใหม่: ขึ้นกล่องตั้งค่าทันที แต่ยังไม่บันทึกจนกว่าจะกดบันทึก */
+  /** สร้าง KPI ใหม่: เปิดฟอร์มเปล่า ยังไม่บันทึกจนกว่าจะกดบันทึก */
   startKpiDraft() {
     let n = app.site.kpis.length + 1;
     while (app.site.kpis.some((k) => k.name === `KPI ${n}`)) n++;
-    app.kpiDraft = { id: newId('kpi'), name: `KPI ${n}`, formula: '', unit: '', target: null, better: 'lower' };
+    app.kpiForm = { id: null, name: `KPI ${n}`, formula: '', unit: '', targetText: '', better: 'lower' };
     app.kpiError = '';
-    app.activeKpiId = null;
     app.ribbonTab = 'kpi';
   },
 
-  saveKpiDraft(): boolean {
-    const d = app.kpiDraft;
-    if (!d) return false;
-    const err = kpiProblem(d);
+  /** เปิดฟอร์มแก้ไข KPI ที่มีอยู่ (สำเนาค่า ยังไม่แก้ของจริง) */
+  openKpi(id: string) {
+    const k = app.site.kpis.find((x) => x.id === id);
+    if (!k) return;
+    app.kpiForm = kpiToForm(k);
+    app.kpiError = '';
+  },
+
+  closeKpiForm() {
+    app.kpiForm = null;
+    app.kpiError = '';
+  },
+
+  /** บันทึกฟอร์ม: ตรวจก่อน แล้วลงผังเป็นขั้นเดียว (ย้อนกลับได้) */
+  saveKpiForm(): boolean {
+    const f = app.kpiForm;
+    if (!f) return false;
+    const target = f.targetText.trim() === '' ? null : Number(f.targetText.replace(/,/g, ''));
+    if (target !== null && !Number.isFinite(target)) {
+      app.kpiError = 'เป้าหมายต้องเป็นตัวเลข หรือเว้นว่างไว้';
+      return false;
+    }
+    const data: Kpi = { id: f.id ?? newId('kpi'), name: f.name.trim(), formula: f.formula.trim(), unit: f.unit, target, better: f.better };
+    const err = kpiProblem(data);
     if (err) {
       app.kpiError = err;
       return false;
     }
     checkpoint();
-    app.site.kpis.push({ ...$state.snapshot(d), name: d.name.trim() });
-    app.kpiDraft = null;
+    const idx = app.site.kpis.findIndex((k) => k.id === data.id);
+    if (idx >= 0) app.site.kpis[idx] = data;
+    else app.site.kpis.push(data);
+    app.kpiForm = null;
     app.kpiError = '';
-    app.activeKpiId = d.id;
     return true;
-  },
-
-  cancelKpiDraft() {
-    app.kpiDraft = null;
-    app.kpiError = '';
   },
 
   deleteKpi(id: string) {
     if (!app.site.kpis.some((k) => k.id === id)) return;
     checkpoint();
     app.site.kpis = app.site.kpis.filter((k) => k.id !== id);
-    if (app.activeKpiId === id) app.activeKpiId = null;
+    if (app.kpiForm?.id === id) app.kpiForm = null;
   },
 
   resetKpis() {
     checkpoint();
     app.site.kpis = structuredClone(DEFAULT_KPIS);
-    app.activeKpiId = null;
+    app.kpiForm = null;
   },
 
   // ---------- ผัง ----------
@@ -643,12 +750,17 @@ export const actions = {
    */
   paste() {
     if (!clipboard) return;
-    checkpoint();
     const src = clipboard;
-    const pos = clipFromCut ? { x: src.x, z: src.z } : besideOf(src);
+    // ห้ามทับ: ถ้าจุดที่ควรวางไม่ว่าง หาจุดว่างที่ใกล้ที่สุด
+    const prefer = clipFromCut ? [{ x: src.x, z: src.z }, ...besideOf(src)] : besideOf(src);
+    const pos = findFreeSpot(src, prefer);
+    if (!pos) {
+      notify('ไม่มีพื้นที่ว่างพอสำหรับวาง');
+      return;
+    }
+    checkpoint();
     const keepLine = clipFromCut && src.lineId && findLine(src.lineId) ? src.lineId : null;
     const asset: Asset = { ...src, id: newId(), name: nextName(src.kind), lineId: keepLine, ...pos };
-    snapAsset(asset);
     app.site.assets.push(asset);
     clipboard = { ...src, x: asset.x, z: asset.z };
     clipFromCut = false;

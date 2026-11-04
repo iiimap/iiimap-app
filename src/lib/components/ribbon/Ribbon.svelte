@@ -16,7 +16,7 @@
 
   let { engine }: { engine?: MapEngine } = $props();
 
-  const VERSION = 'v0.18';
+  const VERSION = 'v0.19';
   const SAVE_TEXT = { saved: 'บันทึกแล้ว', saving: 'กำลังบันทึก…', error: 'บันทึกไม่สำเร็จ' };
 
   const TABS = [
@@ -211,10 +211,10 @@
         </div>
       </RGroup>
     {:else if app.ribbonTab === 'kpi'}
-      <RGroup label={app.kpiDraft ? 'กำลังสร้าง KPI' : 'KPI'}>
-        {#if app.kpiDraft}
-          <RButton size="large" icon="check" label="บันทึก" onclick={() => actions.saveKpiDraft()} />
-          <RButton size="large" icon="close" label="ยกเลิก" onclick={() => guarded.cancelKpiDraft()} />
+      <RGroup label={app.kpiForm ? (app.kpiForm.id ? 'กำลังแก้ไข KPI' : 'กำลังสร้าง KPI') : 'KPI'}>
+        {#if app.kpiForm}
+          <RButton size="large" icon="check" label="บันทึก" disabled={!editing} onclick={() => actions.saveKpiForm()} />
+          <RButton size="large" icon="close" label="ยกเลิก" onclick={() => guarded.closeKpiForm()} />
         {:else}
           <RButton size="large" icon="paste" label="สร้าง KPI" title="สร้าง KPI ใหม่ ตั้งชื่อและสูตรเอง" disabled={!editing} onclick={() => actions.startKpiDraft()} />
         {/if}
@@ -240,8 +240,8 @@
         {:else}
           <div class="kpis">
             {#each kpiResult.items.slice(0, 8) as it (it.kpi.id)}
-              <button class="kpichip {it.state}" class:on={app.activeKpiId === it.kpi.id}
-                onclick={() => (app.activeKpiId = app.activeKpiId === it.kpi.id ? null : it.kpi.id)}>
+              <button class="kpichip {it.state}" class:on={app.kpiForm?.id === it.kpi.id}
+                onclick={() => guarded.openKpi(it.kpi.id)}>
                 <span>{it.kpi.name}</span><b>{fmtNum(it.value)}</b><small>{it.kpi.unit}</small>
               </button>
             {/each}

@@ -4,6 +4,18 @@
 import type { Kpi, Site } from './types';
 import { evalFormula } from './formula';
 
+/** หน่วยที่เลือกได้ใน KPI */
+export const KPI_UNITS: { value: string; label: string }[] = [
+  { value: 'ชม.', label: 'ชั่วโมง (ชม.)' },
+  { value: 'นาที', label: 'นาที' },
+  { value: 'วินาที', label: 'วินาที' },
+  { value: '%', label: 'เปอร์เซ็นต์ (%)' },
+  { value: 'ครั้ง', label: 'ครั้ง' },
+  { value: '', label: 'ไม่มีหน่วย' }
+];
+
+export const BETTER_LABEL = { lower: 'ยิ่งต่ำยิ่งดี', higher: 'ยิ่งสูงยิ่งดี' } as const;
+
 export type KpiPeriod = 'day' | 'week' | 'month';
 export const PERIODS: { id: KpiPeriod; label: string; days: number }[] = [
   { id: 'day', label: 'วันนี้', days: 1 },
