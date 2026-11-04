@@ -63,6 +63,15 @@
   function pickLine(id: string) {
     app.activeLineId = app.activeLineId === id ? null : id;
     if (app.lineAddMode !== app.draftLineId || !app.draftLineId) app.lineAddMode = null;
+    // เลือกไลน์ = กล้องเลื่อนไปที่กลางไลน์ (หลบกล่องตั้งค่าไลน์ทางซ้าย)
+    if (app.activeLineId === id) {
+      const members = app.site.assets.filter((a) => a.lineId === id);
+      if (members.length) {
+        const xs = members.map((a) => a.x);
+        const zs = members.map((a) => a.z);
+        engine?.flyTo((Math.min(...xs) + Math.max(...xs)) / 2, (Math.min(...zs) + Math.max(...zs)) / 2, 160);
+      }
+    }
   }
 
   let allFramed = $derived(app.site.lines.length > 0 && app.site.lines.every((l) => app.frameLines.includes(l.id)));
@@ -240,10 +249,15 @@
         {:else}
           <div class="kpis">
             {#each kpiResult.items.slice(0, 8) as it (it.kpi.id)}
-              <button class="kpichip {it.state}" class:on={app.kpiForm?.id === it.kpi.id}
-                onclick={() => guarded.openKpi(it.kpi.id)}>
-                <span>{it.kpi.name}</span><b>{fmtNum(it.value)}</b><small>{it.kpi.unit}</small>
-              </button>
+              <div class="kpiwrap">
+                <button class="kpichip {it.state}" class:on={app.kpiForm?.id === it.kpi.id}
+                  onclick={() => guarded.openKpi(it.kpi.id)}>
+                  <span>{it.kpi.name}</span><b>{fmtNum(it.value)}</b><small>{it.kpi.unit}</small>
+                </button>
+                {#if editing}
+                  <button class="kpidel" title="ลบ KPI นี้" aria-label="ลบ {it.kpi.name}" onclick={() => guarded.deleteKpi(it.kpi.id)}>×</button>
+                {/if}
+              </div>
             {/each}
           </div>
         {/if}
@@ -363,6 +377,16 @@
     border-left: 4px solid #cbd5e1; border-radius: 7px; background: #fff; cursor: pointer; font: 12px system-ui, sans-serif; color: #334155; white-space: nowrap;
     align-items: center;
   }
+  .kpiwrap { position: relative; }
+  .kpiwrap .kpichip { width: 100%; padding-right: 24px; }
+  /* ปุ่มลบ: ซ่อนไว้ ชี้เมาส์แล้วค่อยโผล่ */
+  .kpidel {
+    position: absolute; top: 4px; right: 3px; width: 20px; height: 22px; border: 0; border-radius: 5px;
+    background: transparent; color: #94a3b8; font-size: 15px; line-height: 1; cursor: pointer;
+    opacity: 0; pointer-events: none; transition: opacity 0.12s;
+  }
+  .kpiwrap:hover .kpidel, .kpidel:focus-visible { opacity: 1; pointer-events: auto; }
+  .kpidel:hover { background: #fef2f2; color: #dc2626; }
   .kpichip.good { border-left-color: #16a34a; }
   .kpichip.bad { border-left-color: #dc2626; }
   .kpichip.on { background: #eff6ff; border-color: #93c5fd; }

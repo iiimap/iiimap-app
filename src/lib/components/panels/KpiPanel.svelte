@@ -31,6 +31,19 @@
     app.kpiError = '';
   }
 
+  // เปิด KPI ไหน (จาก Ribbon หรือในแผง) เลื่อนให้ขอบบนของการ์ดชิดขอบบนของแผง
+  let scroller = $state<HTMLDivElement>();
+  $effect(() => {
+    const key = app.kpiForm ? (app.kpiForm.id ?? '__new__') : null;
+    if (!key || !scroller) return;
+    requestAnimationFrame(() => {
+      const el = scroller?.querySelector<HTMLElement>(`[data-kpi="${key}"]`);
+      if (!el || !scroller) return;
+      const top = el.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop - 8;
+      scroller.scrollTo({ top, behavior: 'smooth' });
+    });
+  });
+
   // คลิกนอกแผง = ปิดกล่องตั้งค่า (ถ้ามีการแก้ที่ยังไม่บันทึก จะถามก่อน)
   function onOutside(e: PointerEvent) {
     if (!app.kpiForm) return;
@@ -129,9 +142,9 @@
   </div>
   <p class="meta">{scopeName} · นับจากเครื่องที่เปิด Andon <b>{result.machines}</b> เครื่อง</p>
 
-  <div class="scroll">
+  <div class="scroll" bind:this={scroller}>
     {#if app.kpiForm && !app.kpiForm.id}
-      <section class="card open isnew">
+      <section class="card open isnew" data-kpi="__new__">
         <div class="newtag">KPI ใหม่ · ยังไม่บันทึก</div>
         {@render editor()}
       </section>
@@ -139,7 +152,7 @@
 
     {#each result.items as it (it.kpi.id)}
       {@const open = app.kpiForm?.id === it.kpi.id}
-      <section class="card {it.state}" class:open>
+      <section class="card {it.state}" class:open data-kpi={it.kpi.id}>
         <button class="sum" onclick={() => guarded.openKpi(it.kpi.id)} title="กดเพื่อตั้งค่า">
           <span class="name">{it.kpi.name}</span>
           <span class="val">{fmtNum(it.value)} <small>{it.kpi.unit}</small></span>
@@ -150,6 +163,9 @@
             <span class="target">ไม่ได้ตั้งเป้า</span>
           {/if}
         </button>
+        {#if editable}
+          <button class="del" title="ลบ KPI นี้" aria-label="ลบ {it.kpi.name}" onclick={() => guarded.deleteKpi(it.kpi.id)}>×</button>
+        {/if}
         {#if open}{@render editor()}{/if}
       </section>
     {:else}
@@ -191,6 +207,16 @@
   .meta b { color: #0f172a; }
   .scroll { overflow-y: auto; padding: 0 12px 12px; display: flex; flex-direction: column; gap: 8px; border-top: 1px solid #f1f5f9; padding-top: 10px; }
 
+  .card { position: relative; }
+  /* ปุ่มลบ: ซ่อนไว้ ชี้เมาส์ที่การ์ดแล้วค่อยโผล่ */
+  .del {
+    position: absolute; top: 6px; right: 6px; width: 22px; height: 22px; border: 0; border-radius: 6px;
+    background: #fff; color: #94a3b8; font-size: 16px; line-height: 1; cursor: pointer;
+    opacity: 0; pointer-events: none; transition: opacity 0.12s;
+  }
+  .card:hover .del, .del:focus-visible { opacity: 1; pointer-events: auto; }
+  .del:hover { background: #fef2f2; color: #dc2626; }
+  .card .sum { padding-right: 30px; }
   .card { border: 1px solid #e5e7eb; border-left: 4px solid #cbd5e1; border-radius: 10px; background: #fff; }
   .card.good { border-left-color: #16a34a; }
   .card.bad { border-left-color: #dc2626; }

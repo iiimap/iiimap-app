@@ -446,6 +446,23 @@ export class MapEngine {
     return { x: ((p.x + 1) / 2) * el.clientWidth, y: ((1 - p.y) / 2) * el.clientHeight };
   }
 
+  private flyGoal: THREE.Vector3 | null = null;
+
+  /**
+   * เลื่อนกล้องไปหาจุด (x, z) บนผังแบบนุ่มนวล ไม่เปลี่ยนระดับซูม
+   * offsetPx = ขยับจุดกึ่งกลางไปทางขวากี่พิกเซล (หลบแผงที่บังอยู่ทางซ้าย)
+   */
+  flyTo(x: number, z: number, offsetPx = 0) {
+    const goal = new THREE.Vector3(x, 0, z);
+    if (offsetPx) {
+      const w = this.container.clientWidth || 1;
+      const worldPerPx = (this.camera.right - this.camera.left) / w;
+      const right = new THREE.Vector3().setFromMatrixColumn(this.camera.matrixWorld, 0).setY(0).normalize();
+      goal.addScaledVector(right, -offsetPx * worldPerPx);
+    }
+    this.flyGoal = goal;
+  }
+
   // ================= กล้อง =================
 
   rotate(dir: 1 | -1) {
@@ -530,6 +547,7 @@ export class MapEngine {
 
   private onPointerDown = (e: PointerEvent) => {
     if (e.button !== 0) return;
+    this.flyGoal = null; // ผู้ใช้จับผังเอง = หยุดการเลื่อนอัตโนมัติ
     // ออกจากช่องกรอกในแผง เพื่อให้คีย์ลัด (R / Del) ใช้ได้ทันที
     (document.activeElement as HTMLElement | null)?.blur?.();
     this.renderer.domElement.setPointerCapture(e.pointerId);
@@ -636,6 +654,15 @@ export class MapEngine {
 
   private loop = () => {
     this.frame = requestAnimationFrame(this.loop);
+    // เลื่อนกล้องไปหาเป้าหมายแบบนุ่มนวล
+    if (this.flyGoal) {
+      this.target.lerp(this.flyGoal, 0.16);
+      if (this.target.distanceTo(this.flyGoal) < 0.01) {
+        this.target.copy(this.flyGoal);
+        this.flyGoal = null;
+      }
+      this.updateCamera();
+    }
     if (Math.abs(this.angleGoal - this.angle) > 1e-4) {
       this.angle += (this.angleGoal - this.angle) * 0.18;
       if (Math.abs(this.angleGoal - this.angle) < 1e-3) this.angle = this.angleGoal;
