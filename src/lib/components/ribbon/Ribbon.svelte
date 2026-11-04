@@ -11,11 +11,12 @@
   import ModelGallery from './ModelGallery.svelte';
   import Dropdown from './Dropdown.svelte';
   import { guarded } from '../../stores/guarded';
+  import { PERIODS, computeKpis, fmtNum } from '../../domain/kpi';
   import type { CategoryId } from '../../domain/catalog';
 
   let { engine }: { engine?: MapEngine } = $props();
 
-  const VERSION = 'v0.17';
+  const VERSION = 'v0.18';
   const SAVE_TEXT = { saved: 'บันทึกแล้ว', saving: 'กำลังบันทึก…', error: 'บันทึกไม่สำเร็จ' };
 
   const TABS = [
@@ -23,6 +24,7 @@
     { id: 'insert', label: 'แทรก', edit: true },
     { id: 'line', label: 'Line', edit: false },
     { id: 'andon', label: 'Andon', edit: false },
+    { id: 'kpi', label: 'KPIs', edit: false },
     { id: 'view', label: 'มุมมอง', edit: false }
   ] as const;
 
@@ -64,6 +66,8 @@
   }
 
   let allFramed = $derived(app.site.lines.length > 0 && app.site.lines.every((l) => app.frameLines.includes(l.id)));
+
+  let kpiResult = $derived(computeKpis(app.site, app.kpiScope, app.kpiPeriod));
 
   let thumbs = $state<Record<string, string>>({});
   onMount(() => {
@@ -206,6 +210,44 @@
           {/each}
         </div>
       </RGroup>
+    {:else if app.ribbonTab === 'kpi'}
+      <RGroup label={app.kpiDraft ? 'กำลังสร้าง KPI' : 'KPI'}>
+        {#if app.kpiDraft}
+          <RButton size="large" icon="check" label="บันทึก" onclick={() => actions.saveKpiDraft()} />
+          <RButton size="large" icon="close" label="ยกเลิก" onclick={() => guarded.cancelKpiDraft()} />
+        {:else}
+          <RButton size="large" icon="paste" label="สร้าง KPI" title="สร้าง KPI ใหม่ ตั้งชื่อและสูตรเอง" disabled={!editing} onclick={() => actions.startKpiDraft()} />
+        {/if}
+      </RGroup>
+      <RGroup label="ขอบเขต · ช่วงเวลา">
+        <div class="kpifilter">
+          <select bind:value={app.kpiScope}>
+            <option value="site">ทั้งโรงงาน</option>
+            {#each sortedLines.filter((l) => l.id !== app.draftLineId) as l (l.id)}
+              <option value={l.id}>{l.name}</option>
+            {/each}
+          </select>
+          <div class="periods">
+            {#each PERIODS as p}
+              <button class:on={app.kpiPeriod === p.id} onclick={() => (app.kpiPeriod = p.id)}>{p.label}</button>
+            {/each}
+          </div>
+        </div>
+      </RGroup>
+      <RGroup label="ค่าปัจจุบัน (ข้อมูลตัวอย่าง) · กดเพื่อตั้งค่า">
+        {#if kpiResult.items.length === 0}
+          <span class="none">ยังไม่มี KPI</span>
+        {:else}
+          <div class="kpis">
+            {#each kpiResult.items.slice(0, 8) as it (it.kpi.id)}
+              <button class="kpichip {it.state}" class:on={app.activeKpiId === it.kpi.id}
+                onclick={() => (app.activeKpiId = app.activeKpiId === it.kpi.id ? null : it.kpi.id)}>
+                <span>{it.kpi.name}</span><b>{fmtNum(it.value)}</b><small>{it.kpi.unit}</small>
+              </button>
+            {/each}
+          </div>
+        {/if}
+      </RGroup>
     {:else}
       <RGroup label="หมุนผัง">
         <RButton size="large" icon="rotateCcw" label="ทวนเข็ม" onclick={() => engine?.rotate(-1)} />
@@ -310,6 +352,23 @@
   }
   .chip:hover:not(:disabled) { background: #f8fafc; border-color: var(--c); }
   .chip.on { background: color-mix(in srgb, var(--c) 14%, white); border-color: var(--c); font-weight: 600; }
+  .kpifilter { display: flex; flex-direction: column; gap: 6px; padding-top: 4px; }
+  .kpifilter select { font: 12.5px system-ui, sans-serif; padding: 4px 6px; border: 1px solid #e2e8f0; border-radius: 6px; background: #fff; max-width: 200px; }
+  .periods { display: flex; background: #f1f5f9; border-radius: 6px; padding: 2px; }
+  .periods button { border: 0; background: transparent; padding: 3px 8px; border-radius: 4px; font: 12px system-ui, sans-serif; color: #475569; cursor: pointer; white-space: nowrap; }
+  .periods button.on { background: #fff; color: #0f172a; font-weight: 600; box-shadow: 0 1px 2px rgba(15, 23, 42, 0.12); }
+  .kpis { display: grid; grid-auto-flow: column; grid-template-rows: repeat(2, 30px); gap: 4px 6px; padding-top: 2px; }
+  .kpichip {
+    display: flex; align-items: baseline; gap: 6px; height: 30px; padding: 0 10px 0 8px; border: 1px solid #e2e8f0;
+    border-left: 4px solid #cbd5e1; border-radius: 7px; background: #fff; cursor: pointer; font: 12px system-ui, sans-serif; color: #334155; white-space: nowrap;
+    align-items: center;
+  }
+  .kpichip.good { border-left-color: #16a34a; }
+  .kpichip.bad { border-left-color: #dc2626; }
+  .kpichip.on { background: #eff6ff; border-color: #93c5fd; }
+  .kpichip b { font-size: 13.5px; color: #0f172a; font-variant-numeric: tabular-nums; }
+  .kpichip.bad b { color: #dc2626; }
+  .kpichip small { font-size: 11px; color: #94a3b8; }
   .chip.more { border-left-color: var(--c); color: #475569; }
   .ddbtn {
     display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 64px; height: 64px; padding: 6px 6px 4px;

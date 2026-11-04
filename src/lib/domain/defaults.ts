@@ -1,4 +1,4 @@
-import type { AndonState, MetricsConfig } from './types';
+import type { AndonState, Kpi, MetricsConfig } from './types';
 
 // สถานะ Andon ตั้งต้น (ผู้ใช้แก้ชื่อ สี และระดับความร้ายแรงได้ทั้งหมด)
 export const SEVERITY_MIN = 0;
@@ -19,10 +19,14 @@ export const clampSeverity = (v: number) =>
   Math.min(SEVERITY_MAX, Math.max(SEVERITY_MIN, Math.round(Number.isFinite(v) ? v : SEVERITY_MIN)));
 
 export const DEFAULT_METRICS: MetricsConfig = {
-  mttr: 'repairTime / failures',
-  mtbf: 'runTime / failures',
   failureStates: ['alarm']
 };
+
+// KPI ตั้งต้น (ผู้ใช้แก้ชื่อ สูตร หน่วย เป้าหมาย หรือลบได้ทั้งหมด)
+export const DEFAULT_KPIS: Kpi[] = [
+  { id: 'kpi-mttr', name: 'MTTR', formula: 'repairTime / failures', unit: 'นาที', target: 60, better: 'lower' },
+  { id: 'kpi-mtbf', name: 'MTBF', formula: 'runTime / failures', unit: 'นาที', target: 2000, better: 'higher' }
+];
 
 // สีประจำไลน์ที่สุ่มให้ตอนสร้างไลน์ใหม่
 export const LINE_COLORS = ['#7c3aed', '#0891b2', '#db2777', '#65a30d', '#ea580c', '#4f46e5', '#0d9488', '#c026d3'];

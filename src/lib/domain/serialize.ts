@@ -1,10 +1,10 @@
 // แปลงผังเป็นไฟล์ / อ่านผังจากไฟล์ (ใช้ทั้งบันทึกอัตโนมัติ และ Export / Import)
-import type { AndonState, Asset, Line, MetricsConfig, Site } from './types';
-import { DEFAULT_ANDON_STATES, DEFAULT_METRICS, OFFLINE_STATE, clampSeverity } from './defaults';
+import type { AndonState, Asset, Kpi, Line, MetricsConfig, Site } from './types';
+import { DEFAULT_ANDON_STATES, DEFAULT_KPIS, DEFAULT_METRICS, OFFLINE_STATE, clampSeverity } from './defaults';
 import { MODELS } from './catalog';
 
 export const FILE_FORMAT = 'iiimap-site';
-export const FILE_VERSION = 2;
+export const FILE_VERSION = 3;
 
 export interface SiteFile {
   format: typeof FILE_FORMAT;
@@ -48,10 +48,28 @@ function readLines(v: unknown): Line[] {
 
 function readMetrics(v: any): MetricsConfig {
   return {
-    mttr: isStr(v?.mttr) ? v.mttr : DEFAULT_METRICS.mttr,
-    mtbf: isStr(v?.mtbf) ? v.mtbf : DEFAULT_METRICS.mtbf,
     failureStates: Array.isArray(v?.failureStates) ? v.failureStates.filter(isStr) : [...DEFAULT_METRICS.failureStates]
   };
+}
+
+/** อ่าน KPI (ไฟล์เวอร์ชัน 2 เก็บสูตร MTTR/MTBF ไว้ใน metrics: ย้ายมาเป็น KPI ให้) */
+function readKpis(v: unknown, oldMetrics: any): Kpi[] {
+  if (Array.isArray(v)) {
+    return v
+      .filter((k) => k && isStr(k.id) && isStr(k.name) && isStr(k.formula))
+      .map((k) => ({
+        id: k.id,
+        name: k.name,
+        formula: k.formula,
+        unit: isStr(k.unit) ? k.unit : '',
+        target: isNum(k.target) ? k.target : null,
+        better: k.better === 'higher' ? 'higher' : 'lower'
+      }));
+  }
+  const kpis = structuredClone(DEFAULT_KPIS);
+  if (isStr(oldMetrics?.mttr)) kpis[0].formula = oldMetrics.mttr;
+  if (isStr(oldMetrics?.mtbf)) kpis[1].formula = oldMetrics.mtbf;
+  return kpis;
 }
 
 /** ตรวจและอ่านไฟล์ผัง (รองรับไฟล์เวอร์ชันเก่า) คืน null ถ้าไฟล์ไม่ถูกต้อง */
@@ -78,7 +96,7 @@ export function fromFile(data: unknown): Site | null {
         lineId: isStr(a.lineId) && lineIds.has(a.lineId) ? a.lineId : null,
         x: a.x, z: a.z, w: a.w, d: a.d, rot: a.rot,
         // ไฟล์เก่าไม่มีช่อง andon: ใช้ค่าเริ่มต้นตามประเภท
-        andon: cap === 'none' ? false : typeof a.andon === 'boolean' ? a.andon : cap === 'default-on',
+        andon: cap === 'none' ? false : a.andon === true,
         status: isStr(a.status) && stateIds.has(a.status) ? a.status : fallbackState
       };
     });
@@ -92,6 +110,7 @@ export function fromFile(data: unknown): Site | null {
     lines,
     andonStates,
     metrics: readMetrics(s.metrics),
+    kpis: readKpis(s.kpis, s.metrics),
     assets
   };
 }

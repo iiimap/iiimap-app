@@ -33,7 +33,7 @@
     const { width, depth, id } = app.site;
     engine?.loadSite({
       width, depth, id, name: '', tenantId: '',
-      lines: [], andonStates: [], metrics: { mttr: '', mtbf: '', failureStates: [] }, assets: []
+      lines: [], andonStates: [], metrics: { failureStates: [] }, kpis: [], assets: []
     });
   });
 

@@ -40,11 +40,19 @@ export interface AndonState {
   system?: 'offline';
 }
 
-/** ตั้งค่าตัวชี้วัด Andon */
+/** ตั้งค่าการนับข้อมูล Andon ที่ใช้คำนวณ KPI */
 export interface MetricsConfig {
-  mttr: string; // สูตร
-  mtbf: string;
-  failureStates: string[]; // สถานะที่นับเป็น "เสีย"
+  failureStates: string[]; // สถานะที่นับเป็น "เสีย" (ใช้นับ failures)
+}
+
+/** KPI ที่ผู้ใช้สร้างและตั้งสูตรเอง */
+export interface Kpi {
+  id: string;
+  name: string; // ชื่อที่ผู้ใช้ตั้ง
+  formula: string; // สูตรจากตัวแปรของระบบ Andon
+  unit: string; // หน่วย เช่น นาที, %, ครั้ง
+  target: number | null; // ค่าเป้าหมาย (ไม่ตั้งก็ได้)
+  better: 'lower' | 'higher'; // ค่าต่ำดี (เช่น MTTR) หรือค่าสูงดี (เช่น MTBF)
 }
 
 export interface Site {
@@ -56,5 +64,6 @@ export interface Site {
   lines: Line[];
   andonStates: AndonState[];
   metrics: MetricsConfig;
+  kpis: Kpi[];
   assets: Asset[];
 }

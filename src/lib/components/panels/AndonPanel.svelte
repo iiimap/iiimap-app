@@ -1,29 +1,9 @@
 <script lang="ts">
-  // แผงตั้งค่า Andon: สีและความหมายของแต่ละสถานะ + สูตร MTTR / MTBF
-  import { METRIC_VARIABLES, SAMPLE_VALUES, checkFormula, evalFormula } from '../../domain/formula';
+  // แผงตั้งค่า Andon: สีและความหมายของแต่ละสถานะ (KPI อยู่ในแท็บ KPIs)
   import { app, actions } from '../../stores/site.svelte';
   import { guarded } from '../../stores/guarded';
 
   let editable = $derived(app.mode === 'edit');
-  const metrics = $derived(app.site.metrics);
-
-  const fmt = (v: number) => (Number.isFinite(v) ? v.toLocaleString('th-TH', { maximumFractionDigits: 2 }) : '—');
-
-  const FORMULAS = [
-    { key: 'mttr', label: 'MTTR', desc: 'เวลาเฉลี่ยในการซ่อม (นาที)' },
-    { key: 'mtbf', label: 'MTBF', desc: 'เวลาเฉลี่ยระหว่างการเสีย (นาที)' }
-  ] as const;
-
-  // ช่องสูตรที่โฟกัสล่าสุด (กดชิปตัวแปรแล้วแทรกที่ช่องนี้)
-  let lastField = $state<'mttr' | 'mtbf'>('mttr');
-
-  function insertVar(id: string) {
-    actions.beginEdit();
-    const cur = app.site.metrics[lastField].trim();
-    app.site.metrics[lastField] = cur ? `${cur} ${id}` : id;
-    actions.commitEdit();
-  }
-
   let nonSystem = $derived(app.site.andonStates.filter((s) => !s.system).length);
 
   let usedBy = $derived(
@@ -70,48 +50,7 @@
       {/if}
     </section>
 
-    <section>
-      <h4>ตัวชี้วัด MTTR / MTBF</h4>
-      <p class="hint">แก้สูตรได้เอง ใช้ตัวแปรด้านล่าง กับ + − × ÷ และวงเล็บ (ใช้ * แทนคูณ, / แทนหาร)</p>
-
-      {#each FORMULAS as f}
-        {@const err = checkFormula(metrics[f.key])}
-        <label class="formula">
-          <span class="fl"><b>{f.label}</b> {f.desc}</span>
-          <input bind:value={app.site.metrics[f.key]} disabled={!editable} class:bad={err} spellcheck="false"
-            onfocus={() => { lastField = f.key; actions.beginEdit(); }} onchange={() => actions.commitEdit()} />
-          {#if err}
-            <span class="err">{err}</span>
-          {:else}
-            <span class="ok">ตัวอย่างผลลัพธ์ = <b>{fmt(evalFormula(metrics[f.key], SAMPLE_VALUES))}</b></span>
-          {/if}
-        </label>
-      {/each}
-
-      <div class="vars">
-        {#each METRIC_VARIABLES as v}
-          <button disabled={!editable} title="{v.label} (ค่าตัวอย่าง {v.sample})" onclick={() => insertVar(v.id)}>
-            <code>{v.id}</code><span>{v.label}</span>
-          </button>
-        {/each}
-      </div>
-
-      <h4>นับเป็น "เสีย" (ใช้นับ failures)</h4>
-      <div class="checks">
-        {#each app.site.andonStates as st (st.id)}
-          <label>
-            <input type="checkbox" checked={metrics.failureStates.includes(st.id)} disabled={!editable}
-              onchange={() => actions.toggleFailureState(st.id)} />
-            <span class="dot" style="background:{st.color}"></span>{st.name}
-          </label>
-        {/each}
-      </div>
-
-      {#if editable}
-        <div class="btns"><button class="ghost" onclick={() => guarded.resetFormulas()}>คืนสูตรมาตรฐาน</button></div>
-      {/if}
-      <p class="note">ค่าจริงจะคำนวณจากประวัติ Andon เมื่อเชื่อมระบบบันทึกเหตุการณ์ (backend) ตอนนี้แสดงผลจากค่าตัวอย่าง</p>
-    </section>
+    <p class="note">ตัวชี้วัด เช่น MTTR / MTBF และสถานะที่นับเป็น "เสีย" ย้ายไปอยู่ที่แท็บ <b>KPIs</b></p>
   </div>
 </aside>
 

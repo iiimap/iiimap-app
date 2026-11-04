@@ -1,5 +1,5 @@
 import type { Site } from './types';
-import { DEFAULT_ANDON_STATES, DEFAULT_METRICS } from './defaults';
+import { DEFAULT_ANDON_STATES, DEFAULT_KPIS, DEFAULT_METRICS } from './defaults';
 
 // ผังเปล่า ขนาด 60 x 40 เมตร
 export const emptySite: Site = {
@@ -11,5 +11,6 @@ export const emptySite: Site = {
   lines: [],
   andonStates: DEFAULT_ANDON_STATES,
   metrics: DEFAULT_METRICS,
+  kpis: DEFAULT_KPIS,
   assets: []
 };

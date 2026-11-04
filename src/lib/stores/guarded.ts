@@ -65,8 +65,20 @@ export const guarded = {
       actions.resetAndonStates();
   },
 
-  async resetFormulas() {
-    if (await ask({ title: 'คืนสูตรมาตรฐาน?', message: 'สูตร MTTR และ MTBF ที่แก้ไว้จะถูกแทนด้วยสูตรมาตรฐาน', confirmText: 'คืนค่า' }))
-      actions.resetFormulas();
+  async deleteKpi(id: string) {
+    const k = app.site.kpis.find((x) => x.id === id);
+    if (!k) return;
+    if (await ask({ title: `ลบ KPI "${k.name}"?`, message: 'KPI นี้และสูตรจะถูกลบ (กด Ctrl+Z เพื่อย้อนกลับได้)' })) actions.deleteKpi(id);
+  },
+
+  async cancelKpiDraft() {
+    if (!app.kpiDraft) return;
+    if (await ask({ title: `ยกเลิกการสร้าง KPI "${app.kpiDraft.name}"?`, message: 'KPI ที่ยังไม่บันทึกจะหายไป', confirmText: 'ยกเลิก KPI' }))
+      actions.cancelKpiDraft();
+  },
+
+  async resetKpis() {
+    if (await ask({ title: 'คืน KPI เริ่มต้น?', message: 'KPI ทั้งหมดที่สร้างหรือแก้ไว้จะถูกแทนด้วย MTTR และ MTBF แบบมาตรฐาน', confirmText: 'คืนค่า' }))
+      actions.resetKpis();
   }
 };

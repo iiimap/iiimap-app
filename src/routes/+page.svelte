@@ -8,6 +8,7 @@
   import ConfirmModal from '../lib/components/ConfirmModal.svelte';
   import { guarded } from '../lib/stores/guarded';
   import AndonPanel from '../lib/components/panels/AndonPanel.svelte';
+  import KpiPanel from '../lib/components/panels/KpiPanel.svelte';
   import type { MapEngine } from '../lib/map-engine/MapEngine';
   import { app, actions } from '../lib/stores/site.svelte';
 
@@ -87,6 +88,7 @@
     <Labels {engine} />
     <LineConfig />
     {#if app.ribbonTab === 'andon'}<AndonPanel />{/if}
+    {#if app.ribbonTab === 'kpi'}<KpiPanel />{/if}
     <Properties />
   </div>
   <StatusBar {engine} />

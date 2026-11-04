@@ -1,12 +1,14 @@
 import { emptySite } from '../domain/sample';
 import { MODELS } from '../domain/catalog';
-import { DEFAULT_ANDON_STATES, DEFAULT_METRICS, LINE_COLORS, SEVERITY_MAX, clampSeverity } from '../domain/defaults';
+import { DEFAULT_ANDON_STATES, DEFAULT_KPIS, LINE_COLORS, SEVERITY_MAX, clampSeverity } from '../domain/defaults';
+import type { KpiPeriod } from '../domain/kpi';
 import { footprint, snapAxis } from '../domain/geometry';
-import type { AndonState, Asset, AssetKind, LineMode, Site } from '../domain/types';
+import type { AndonState, Asset, AssetKind, Kpi, LineMode, Site } from '../domain/types';
 import { loadLocal, saveLocal } from './persist';
+import { checkFormula } from '../domain/formula';
 
 export type Mode = 'view' | 'edit';
-export type RibbonTab = 'home' | 'insert' | 'line' | 'andon' | 'view';
+export type RibbonTab = 'home' | 'insert' | 'line' | 'andon' | 'kpi' | 'view';
 
 
 
@@ -36,6 +38,12 @@ export const app = $state({
   lineAddMode: null as string | null, // โหมด "คลิกบนผังเพื่อเพิ่มเข้าไลน์นี้"
   draftLineId: null as string | null, // ไลน์ที่เพิ่งสร้าง ยังไม่ได้กดบันทึก
   draftError: '',
+  // KPIs
+  kpiScope: 'site' as string, // 'site' = ทั้งโรงงาน หรือ id ของไลน์
+  kpiPeriod: 'day' as KpiPeriod,
+  activeKpiId: null as string | null, // KPI ที่เปิดกล่องตั้งค่าอยู่
+  kpiDraft: null as Kpi | null, // KPI ใหม่ที่ยังไม่บันทึก
+  kpiError: '',
   saveState: 'saved' as 'saved' | 'saving' | 'error'
 });
 
@@ -96,7 +104,8 @@ const snapshot = () =>
     assets: app.site.assets,
     lines: app.site.lines,
     andonStates: app.site.andonStates,
-    metrics: app.site.metrics
+    metrics: app.site.metrics,
+    kpis: app.site.kpis
   });
 
 function restore(json: string) {
@@ -105,6 +114,8 @@ function restore(json: string) {
   app.site.lines = s.lines;
   app.site.andonStates = s.andonStates;
   app.site.metrics = s.metrics;
+  app.site.kpis = s.kpis;
+  if (!app.site.kpis.some((k) => k.id === app.activeKpiId)) app.activeKpiId = null;
   if (!app.site.assets.some((a) => a.id === app.selectedId)) app.selectedId = null;
   if (!app.site.lines.some((l) => l.id === app.activeLineId)) app.activeLineId = null;
   if (!app.site.lines.some((l) => l.id === app.lineAddMode)) app.lineAddMode = null;
@@ -182,11 +193,22 @@ function replaceSite(site: Site) {
   app.activeLineId = null;
   app.lineAddMode = null;
   app.frameLines = [];
+  app.activeKpiId = null;
+  app.kpiDraft = null;
+  app.kpiScope = 'site';
   clearDraft();
   history.past = [];
   history.future = [];
   clipboard = null;
   clip.has = false;
+}
+
+/** ตรวจ KPI ก่อนบันทึก: คืนข้อความปัญหา หรือ '' ถ้าใช้ได้ */
+export function kpiProblem(k: Kpi): string {
+  const name = k.name.trim();
+  if (!name) return 'กรุณาตั้งชื่อ KPI';
+  if (app.site.kpis.some((x) => x.id !== k.id && x.name.trim() === name)) return `มี KPI ชื่อ "${name}" อยู่แล้ว`;
+  return checkFormula(k.formula) ?? '';
 }
 
 // ================= สี Andon ที่แสดงจริงบนผัง =================
@@ -240,6 +262,7 @@ export const actions = {
     if (tab !== 'line') app.lineAddMode = null;
     // ออกจากแท็บ Line = ปิดกล่องตั้งค่าไลน์ (ยกเว้นไลน์ใหม่ที่ยังไม่บันทึก)
     if (tab !== 'line' && app.activeLineId !== app.draftLineId) app.activeLineId = null;
+    if (tab !== 'kpi' && !app.kpiDraft) app.activeKpiId = null;
     if (tab !== 'insert') app.placing = null;
   },
 
@@ -271,7 +294,7 @@ export const actions = {
       w: def.w,
       d: def.d,
       rot,
-      andon: def.andon === 'default-on', // ค่าเริ่มต้นตามประเภท
+      andon: false, // วางแล้วยังไม่มี Andon ผู้ใช้เปิดเองในแผงคุณสมบัติ
       status: defaultStatus()
     };
     snapAsset(asset);
@@ -524,10 +547,49 @@ export const actions = {
     app.site.metrics.failureStates = list.includes(id) ? list.filter((s) => s !== id) : [...list, id];
   },
 
-  resetFormulas() {
+  // ---------- KPIs ----------
+  /** สร้าง KPI ใหม่: ขึ้นกล่องตั้งค่าทันที แต่ยังไม่บันทึกจนกว่าจะกดบันทึก */
+  startKpiDraft() {
+    let n = app.site.kpis.length + 1;
+    while (app.site.kpis.some((k) => k.name === `KPI ${n}`)) n++;
+    app.kpiDraft = { id: newId('kpi'), name: `KPI ${n}`, formula: '', unit: '', target: null, better: 'lower' };
+    app.kpiError = '';
+    app.activeKpiId = null;
+    app.ribbonTab = 'kpi';
+  },
+
+  saveKpiDraft(): boolean {
+    const d = app.kpiDraft;
+    if (!d) return false;
+    const err = kpiProblem(d);
+    if (err) {
+      app.kpiError = err;
+      return false;
+    }
     checkpoint();
-    app.site.metrics.mttr = DEFAULT_METRICS.mttr;
-    app.site.metrics.mtbf = DEFAULT_METRICS.mtbf;
+    app.site.kpis.push({ ...$state.snapshot(d), name: d.name.trim() });
+    app.kpiDraft = null;
+    app.kpiError = '';
+    app.activeKpiId = d.id;
+    return true;
+  },
+
+  cancelKpiDraft() {
+    app.kpiDraft = null;
+    app.kpiError = '';
+  },
+
+  deleteKpi(id: string) {
+    if (!app.site.kpis.some((k) => k.id === id)) return;
+    checkpoint();
+    app.site.kpis = app.site.kpis.filter((k) => k.id !== id);
+    if (app.activeKpiId === id) app.activeKpiId = null;
+  },
+
+  resetKpis() {
+    checkpoint();
+    app.site.kpis = structuredClone(DEFAULT_KPIS);
+    app.activeKpiId = null;
   },
 
   // ---------- ผัง ----------
