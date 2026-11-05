@@ -8,3 +8,12 @@ export const theme = {
   selection: 0x2563eb,
   blocked: 0xdc2626 // เงาตอนวางทับโมเดลอื่น
 };
+
+// ธีมมืดสำหรับโหมดจอ TV (แบบห้องควบคุม อ่านจากไกลชัด)
+export const darkTheme = {
+  background: 0x0b1220,
+  floor: 0x162033,
+  floorEdge: 0x334155,
+  gridMinor: 0x1c2940,
+  gridMajor: 0x2a3a55
+};

@@ -6,7 +6,7 @@ import type { Asset, AssetKind, Site } from '../domain/types';
 import { MODELS } from '../domain/catalog';
 import { buildModel, setStatusColor, disposeModel, addAndon } from './models';
 import { footprint, snapAxis } from '../domain/geometry';
-import { theme } from './theme';
+import { theme, darkTheme } from './theme';
 
 
 const VIEW_SIZE = 30; // ครึ่งความสูงของมุมมองเมื่อ zoom = 1 (เมตร)
@@ -133,6 +133,7 @@ export class MapEngine {
 
   loadSite(site: Site) {
     this.siteGroup.clear();
+    this.lastSite = site;
     this.siteSize = { w: site.width, d: site.depth };
 
     // เงาและการซูมออกต้องครอบคลุมทั้งผัง (ผังใหญ่ได้ถึง 500 ม.)
@@ -149,7 +150,7 @@ export class MapEngine {
 
     const floor = new THREE.Mesh(
       new THREE.BoxGeometry(site.width, 0.3, site.depth),
-      new THREE.MeshStandardMaterial({ color: theme.floor, roughness: 0.95 })
+      new THREE.MeshStandardMaterial({ color: this.palette().floor, roughness: 0.95 })
     );
     floor.position.y = -0.15;
     floor.receiveShadow = true;
@@ -157,14 +158,14 @@ export class MapEngine {
 
     const edge = new THREE.LineSegments(
       new THREE.EdgesGeometry(floor.geometry),
-      new THREE.LineBasicMaterial({ color: theme.floorEdge })
+      new THREE.LineBasicMaterial({ color: this.palette().floorEdge })
     );
     edge.position.copy(floor.position);
     this.siteGroup.add(edge);
 
     this.grids = [
-      this.makeGrid(site.width, site.depth, 1, theme.gridMinor, 0.002),
-      this.makeGrid(site.width, site.depth, 5, theme.gridMajor, 0.004)
+      this.makeGrid(site.width, site.depth, 1, this.palette().gridMinor, 0.002),
+      this.makeGrid(site.width, site.depth, 5, this.palette().gridMajor, 0.004)
     ];
     for (const g of this.grids) {
       g.visible = this.gridVisible;
@@ -184,6 +185,25 @@ export class MapEngine {
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
     return new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ color }));
+  }
+
+  private dark = false;
+  private lastSite: Site | null = null;
+  private palette() {
+    return this.dark ? darkTheme : theme;
+  }
+
+  /** สลับธีมมืด (โหมดจอ TV) */
+  setDark(dark: boolean) {
+    if (dark === this.dark) return;
+    this.dark = dark;
+    this.scene.background = new THREE.Color(this.palette().background);
+    if (this.lastSite) {
+      const t = this.target.clone();
+      this.loadSite(this.lastSite);
+      this.target.copy(t);
+      this.updateCamera();
+    }
   }
 
   setGridVisible(visible: boolean) {
@@ -504,17 +524,30 @@ export class MapEngine {
     this.setZoom(this.zoom * factor);
   }
 
-  /** ซูมให้เห็นทั้งผังพอดีจอ (ใช้ตอนเข้าโหมดจอ TV) */
-  fitSite() {
-    const w = this.container.clientWidth || 1;
-    const h = this.container.clientHeight || 1;
-    // มุม isometric: ผังกินพื้นที่บนจอประมาณ (กว้าง+ลึก) × 0.71 ทั้งแนวนอน และ × 0.41 แนวตั้ง
+  /**
+   * ซูมให้เห็นทั้งผังพอดีพื้นที่ว่าง (ใช้ตอนเข้าโหมดจอ TV)
+   * padTop / padRight = พื้นที่ที่มีแผงบังอยู่ด้านบน / ด้านขวา (พิกเซล)
+   */
+  fitSite(padTop = 0, padRight = 0) {
+    const W = this.container.clientWidth || 1;
+    const H = this.container.clientHeight || 1;
+    const w = Math.max(100, W - padRight);
+    const h = Math.max(100, H - padTop);
+    // มุม isometric: ผังกินพื้นที่บนจอประมาณ (กว้าง+ลึก) × 0.71 แนวนอน และ × 0.41 แนวตั้ง
     const span = this.siteSize.w + this.siteSize.d;
-    const needH = (span * 0.41) / 2 + 2;
-    const needW = (span * 0.71) / 2 + 2;
-    const viewH = Math.max(needH, needW * (h / w));
-    this.flyGoal = new THREE.Vector3(0, 0, 0);
-    this.setZoom(VIEW_SIZE / viewH);
+    const needH = (span * 0.41) / 2 + 1.5;
+    const needW = (span * 0.71) / 2 + 1.5;
+    const halfH = Math.max(needH, needW * (h / w)); // ครึ่งความสูงของพื้นที่ว่าง (หน่วยโลก)
+    this.setZoom(VIEW_SIZE / (halfH * (H / h)));
+    this.updateCamera();
+    // เลื่อนให้ผังอยู่กลางพื้นที่ว่าง ไม่ใช่กลางจอทั้งหมด
+    const wpp = (this.camera.top - this.camera.bottom) / H;
+    const right = new THREE.Vector3().setFromMatrixColumn(this.camera.matrixWorld, 0).setY(0).normalize();
+    const up = new THREE.Vector3().setFromMatrixColumn(this.camera.matrixWorld, 1).setY(0).normalize();
+    const goal = new THREE.Vector3(0, 0, 0)
+      .addScaledVector(right, (padRight / 2) * wpp)
+      .addScaledVector(up, ((padTop / 2) * wpp) / Math.sin(ELEVATION));
+    this.flyGoal = goal;
   }
 
   resetView() {
