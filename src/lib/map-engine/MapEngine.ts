@@ -499,18 +499,29 @@ export class MapEngine {
   }
 
   /**
-   * เลื่อนกล้องไปหาจุด (x, z) บนผังแบบนุ่มนวล ไม่เปลี่ยนระดับซูม
-   * offsetPx = ขยับจุดกึ่งกลางไปทางขวากี่พิกเซล (หลบแผงที่บังอยู่ทางซ้าย)
+   * เลื่อนกล้องไปหาจุด (x, z) บนผังแบบนุ่มนวล
+   * offsetPx / offsetPy = ให้จุดนั้นไปอยู่ขวา / ล่างของกลางจอกี่พิกเซล (หลบแผงที่บังอยู่)
+   * zoom = ระดับซูมที่ต้องการ (ไม่ใส่ = ซูมเท่าเดิม)
    */
-  flyTo(x: number, z: number, offsetPx = 0) {
+  flyTo(x: number, z: number, offsetPx = 0, offsetPy = 0, zoom?: number) {
+    if (zoom !== undefined) {
+      this.setZoom(zoom);
+      this.updateCamera();
+    }
     const goal = new THREE.Vector3(x, 0, z);
-    if (offsetPx) {
-      const w = this.container.clientWidth || 1;
-      const worldPerPx = (this.camera.right - this.camera.left) / w;
+    if (offsetPx || offsetPy) {
+      const H = this.container.clientHeight || 1;
+      const wpp = (this.camera.top - this.camera.bottom) / H;
       const right = new THREE.Vector3().setFromMatrixColumn(this.camera.matrixWorld, 0).setY(0).normalize();
-      goal.addScaledVector(right, -offsetPx * worldPerPx);
+      const up = new THREE.Vector3().setFromMatrixColumn(this.camera.matrixWorld, 1).setY(0).normalize();
+      goal.addScaledVector(right, -offsetPx * wpp);
+      goal.addScaledVector(up, (offsetPy * wpp) / Math.sin(ELEVATION));
     }
     this.flyGoal = goal;
+  }
+
+  getZoom() {
+    return this.zoom;
   }
 
   // ================= กล้อง =================

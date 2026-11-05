@@ -1,16 +1,19 @@
 <script lang="ts">
   // โหมดจอ TV (แบบห้องควบคุม): ธีมมืด ตัวเลขใหญ่ อ่านจากไกลชัด
-  // - แถบบน (ชื่อ + นาฬิกา + การ์ดสถานะ/KPI) ย่อเก็บได้ด้วยลูกศร
-  // - การ์ดสถานะ/KPI เลื่อนซ้าย-ขวาด้วยลูกศร เมื่อมีเยอะจนล้นจอ
+  // - แถบบน (ชื่อ + นาฬิกา) แสดงเสมอ / แถวการ์ดสถานะและ KPI ย่อเก็บได้ด้วยลูกศร
+  // - การ์ดสถานะกับ KPI แบ่งครึ่ง เลื่อนซ้าย-ขวาแยกกันของใครของมัน
   // - รายการเรื่องด้านขวา ปิด/เปิดได้ ตอนปิดมีตัวเลขแจ้งเตือนสีแดง
+  // - กดชื่อเครื่องในรายการ = กล้องพาไปที่เครื่องนั้น + ป๊อปอัปรายละเอียดบนผัง
   import type { MapEngine } from '../map-engine/MapEngine';
   import { app, actions, clock } from '../stores/site.svelte';
   import { computeKpis, fmtNum } from '../domain/kpi';
   import { stageOf, STAGE_LABEL, fmtDuration } from '../domain/incident';
+  import ScrollStrip from './ScrollStrip.svelte';
 
   let { engine }: { engine?: MapEngine } = $props();
 
-  const TOP = 56 + 104; // ความสูงแถบบน + แถวการ์ด (px)
+  const BAR = 56; // แถบบน (px)
+  const STATS = 112; // แถวการ์ด (px)
   const SIDE = 360; // ความกว้างรายการด้านขวา + ระยะขอบ (px)
 
   // จำว่าย่อ/ขยายส่วนไหนไว้ (ต่อเครื่อง)
@@ -22,7 +25,7 @@
       return def;
     }
   }
-  let topOpen = $state(load('iiimap.tv.top', true));
+  let topOpen = $state(load('iiimap.tv.top', true)); // แถวการ์ดสถานะ/KPI
   let sideOpen = $state(load('iiimap.tv.side', true));
   $effect(() => {
     try {
@@ -41,7 +44,7 @@
   // ซูมให้ผังพอดีพื้นที่ว่าง (ทำใหม่ทุกครั้งที่ย่อ/ขยายแถบ)
   $effect(() => {
     if (!app.tvMode) return;
-    const top = topOpen ? TOP : 0;
+    const top = BAR + (topOpen ? STATS : 0);
     const side = sideOpen ? SIDE : 0;
     const t = setTimeout(() => engine?.fitSite(top, side), 120); // รอเต็มจอ/แอนิเมชันเสร็จก่อน
     return () => clearTimeout(t);
@@ -67,28 +70,52 @@
     app.site.andonStates.map((s) => ({ s, n: app.site.assets.filter((a) => a.andon && a.status === s.id).length }))
   );
 
-  // ---------- แถวการ์ดเลื่อนซ้าย-ขวา ----------
-  let strip = $state<HTMLDivElement>();
-  let canLeft = $state(false);
-  let canRight = $state(false);
-  function updateArrows() {
-    if (!strip) return;
-    canLeft = strip.scrollLeft > 4;
-    canRight = strip.scrollLeft + strip.clientWidth < strip.scrollWidth - 4;
+  // ---------- กดชื่อเครื่อง = ไปที่เครื่องนั้น + ป๊อปอัป ----------
+  let focusId = $state<string | null>(null); // id ของเรื่องที่ป๊อปอัปอยู่
+  let popPos = $state({ x: -9999, y: -9999 }); // ตำแหน่งบนจอ (อัปเดตทุกเฟรม แยกจาก focusId)
+  let focusInc = $derived(focusId ? app.site.incidents.find((i) => i.id === focusId) : undefined);
+
+  function goTo(incId: string) {
+    const inc = app.site.incidents.find((i) => i.id === incId);
+    const a = inc && app.site.assets.find((x) => x.id === inc.assetId);
+    if (!inc || !a || !engine) return;
+    const top = BAR + (topOpen ? STATS : 0);
+    const side = sideOpen ? SIDE : 0;
+    // ให้เครื่องอยู่กลางพื้นที่ว่าง (ไม่โดนแถบบนและรายการขวาบัง) และซูมเข้าให้เห็นชัด
+    engine.flyTo(a.x, a.z, -side / 2, top / 2, Math.max(engine.getZoom(), 1.8));
+    popPos = { x: -9999, y: -9999 };
+    focusId = incId;
   }
-  function scrollStrip(dir: 1 | -1) {
-    strip?.scrollBy({ left: dir * strip.clientWidth * 0.8, behavior: 'smooth' });
-  }
+
+  // ตามตำแหน่งเครื่องทุกเฟรม ระหว่างที่ป๊อปอัปเปิดอยู่
   $effect(() => {
-    // คำนวณลูกศรใหม่เมื่อจำนวนการ์ดหรือขนาดจอเปลี่ยน
-    void counts.length;
-    void kpis.items.length;
-    if (!strip) return;
-    const ro = new ResizeObserver(updateArrows);
-    ro.observe(strip);
-    updateArrows();
-    return () => ro.disconnect();
+    const id = focusId;
+    if (!id || !engine) return;
+    let raf = 0;
+    const tick = () => {
+      const inc = app.site.incidents.find((i) => i.id === id);
+      const p = inc ? engine!.getLabelAnchor(inc.assetId) : null;
+      if (p) popPos = p;
+      raf = requestAnimationFrame(tick);
+    };
+    tick();
+    return () => cancelAnimationFrame(raf);
   });
+
+  // ปิดป๊อปอัปอัตโนมัติเมื่อครบ 20 วินาที
+  $effect(() => {
+    if (!focusId) return;
+    const t = setTimeout(() => (focusId = null), 20000);
+    return () => clearTimeout(t);
+  });
+  // เรื่องถูกปิดไปแล้ว = ปิดป๊อปอัป
+  $effect(() => {
+    if (focusId && (!focusInc || focusInc.resolvedAt !== null)) focusId = null;
+  });
+  // คลิกที่อื่น = ปิดป๊อปอัป
+  function onOutside(e: PointerEvent) {
+    if (focusId && !(e.target as HTMLElement).closest('.pop, .row .name')) focusId = null;
+  }
 
   const stateOf = (id: string) => app.site.andonStates.find((s) => s.id === id);
   const assetName = (id: string) => app.site.assets.find((a) => a.id === id)?.name ?? '(ถูกลบ)';
@@ -97,52 +124,50 @@
   let date = $derived(new Date(clock.now).toLocaleDateString('th-TH', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }));
 </script>
 
-{#snippet chevron(dir: 'up' | 'down' | 'left' | 'right', size = 18)}
+{#snippet chevron(dir: 'up' | 'down' | 'left' | 'right' | 'x', size = 18)}
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-    <path d={{ up: 'M6 15l6-6 6 6', down: 'M6 9l6 6 6-6', left: 'M15 6l-6 6 6 6', right: 'M9 6l6 6-6 6' }[dir]} />
+    <path d={{ up: 'M6 15l6-6 6 6', down: 'M6 9l6 6 6-6', left: 'M15 6l-6 6 6 6', right: 'M9 6l6 6-6 6', x: 'M6 6l12 12 M18 6L6 18' }[dir]} />
   </svg>
 {/snippet}
 
+<svelte:window onpointerdown={onOutside} />
+
 {#if app.tvMode}
   <div class="tv">
-    {#if topOpen}
-      <header class="bar">
-        <div class="brand"><span class="logo">iii</span>Map</div>
-        <div class="site">{app.site.name}</div>
-        <div class="spacer"></div>
-        <div class="clock"><b>{time}</b><small>{date}</small></div>
-        <button class="exit" onclick={() => actions.exitTv()} title="ออกจากโหมดจอ TV (Esc)">ออก</button>
-      </header>
+    <header class="bar">
+      <div class="brand"><span class="logo">iii</span>Map</div>
+      <div class="site">{app.site.name}</div>
+      <div class="spacer"></div>
+      <div class="clock"><b>{time}</b><small>{date}</small></div>
+      <button class="exit" onclick={() => actions.exitTv()} title="ออกจากโหมดจอ TV (Esc)">ออก</button>
+    </header>
 
+    {#if topOpen}
       <section class="stats">
-        {#if canLeft}
-          <button class="arrow left" aria-label="เลื่อนไปทางซ้าย" onclick={() => scrollStrip(-1)}>{@render chevron('left', 22)}</button>
-        {/if}
-        <div class="strip" bind:this={strip} onscroll={updateArrows}>
+        <ScrollStrip title="สถานะเครื่อง">
           {#each counts as c (c.s.id)}
             <div class="tile st" style="--c:{c.s.color}">
               <span class="name"><i></i>{c.s.name}</span>
               <b>{c.n}</b>
             </div>
           {/each}
-          {#if kpis.items.length}
-            <span class="divider"></span>
-            {#each kpis.items as it (it.kpi.id)}
-              <div class="tile k {it.state}">
-                <span class="name">{it.kpi.name} <small>วันนี้</small></span>
-                <b>{fmtNum(it.value)}<small>{it.kpi.unit}</small></b>
-              </div>
-            {/each}
-          {/if}
-        </div>
-        {#if canRight}
-          <button class="arrow right" aria-label="เลื่อนไปทางขวา" onclick={() => scrollStrip(1)}>{@render chevron('right', 22)}</button>
-        {/if}
-        <button class="collapse" title="ย่อแถบด้านบน" aria-label="ย่อแถบด้านบน" onclick={() => (topOpen = false)}>{@render chevron('up')}</button>
+        </ScrollStrip>
+        <span class="divider"></span>
+        <ScrollStrip title="KPI · วันนี้">
+          {#each kpis.items as it (it.kpi.id)}
+            <div class="tile k {it.state}">
+              <span class="name">{it.kpi.name}</span>
+              <b>{fmtNum(it.value)}<small>{it.kpi.unit}</small></b>
+            </div>
+          {:else}
+            <span class="none">ยังไม่มี KPI</span>
+          {/each}
+        </ScrollStrip>
+        <button class="collapse" title="ย่อแถวสถานะและ KPI" aria-label="ย่อแถวสถานะและ KPI" onclick={() => (topOpen = false)}>{@render chevron('up')}</button>
       </section>
     {:else}
-      <button class="pull top" title="แสดงแถบด้านบน" aria-label="แสดงแถบด้านบน" onclick={() => (topOpen = true)}>
-        {@render chevron('down')}<span>{time}</span>
+      <button class="pull top" title="แสดงแถวสถานะและ KPI" aria-label="แสดงแถวสถานะและ KPI" onclick={() => (topOpen = true)}>
+        {@render chevron('down')}<span>สถานะ · KPI</span>
       </button>
     {/if}
 
@@ -163,7 +188,7 @@
             {@const stage = stageOf(inc)}
             <div class="row" style="--c:{st?.color ?? '#94a3b8'}">
               <div class="main">
-                <b>{assetName(inc.assetId)}</b>
+                <button class="name" title="ไปที่เครื่องนี้บนผัง" onclick={() => goTo(inc.id)}>{assetName(inc.assetId)}</button>
                 <span>{st?.name ?? inc.stateId}{#if lineName(inc.lineId)} · {lineName(inc.lineId)}{/if}</span>
               </div>
               <div class="side">
@@ -180,6 +205,20 @@
         <span class="vt">เรื่องที่เปิดอยู่</span>
         {#if open.length}<span class="badge">{open.length}</span>{/if}
       </button>
+    {/if}
+
+    {#if focusId && focusInc}
+      {@const st = stateOf(focusInc.stateId)}
+      {@const stage = stageOf(focusInc)}
+      <div class="pop" style="left:{popPos.x}px; top:{popPos.y}px; --c:{st?.color ?? '#94a3b8'}">
+        <div class="ph">
+          <b>{assetName(focusInc.assetId)}</b>
+          <button class="px" aria-label="ปิด" onclick={() => (focusId = null)}>{@render chevron('x', 14)}</button>
+        </div>
+        <div class="pst"><i></i>{st?.name ?? focusInc.stateId}{#if lineName(focusInc.lineId)} · {lineName(focusInc.lineId)}{/if}</div>
+        <div class="pt">{fmtDuration(clock.now - focusInc.openedAt)}</div>
+        <div class="pstage {stage}">{STAGE_LABEL[stage]}</div>
+      </div>
     {/if}
   </div>
 {/if}
@@ -206,16 +245,12 @@
   }
   .exit:hover { opacity: 1; color: #f8fafc; }
 
-  /* แถวการ์ด (เลื่อนซ้าย-ขวาได้) */
+  /* แถวการ์ด: ซ้าย = สถานะ / ขวา = KPI (เลื่อนแยกกัน) */
   .stats {
-    position: absolute; top: 56px; left: 0; right: 0; height: 104px; box-sizing: border-box;
-    background: #0f172a; border-bottom: 1px solid #1e293b;
+    position: absolute; top: 56px; left: 0; right: 0; height: 112px; box-sizing: border-box; display: flex; gap: 20px;
+    padding: 8px 24px 12px; background: #0f172a; border-bottom: 1px solid #1e293b;
   }
-  .strip {
-    height: 100%; display: flex; gap: 10px; align-items: stretch; padding: 12px 24px; box-sizing: border-box;
-    overflow-x: auto; overflow-y: hidden; scrollbar-width: none;
-  }
-  .strip::-webkit-scrollbar { display: none; }
+  .none { align-self: center; font-size: 13px; color: #64748b; }
   .tile {
     flex: none; min-width: 130px; padding: 8px 14px; border-radius: 10px; background: #111c31; border: 1px solid #1e293b;
     display: flex; flex-direction: column; justify-content: space-between; box-sizing: border-box;
@@ -230,16 +265,8 @@
   .k.bad b { color: #fca5a5; }
   .k b small { font-size: 13px; font-weight: 500; color: #94a3b8; margin-left: 6px; }
   .k .name small { font-size: 11px; color: #64748b; }
-  .divider { flex: none; width: 1px; margin: 4px 8px; background: #1e293b; }
+  .divider { flex: none; width: 1px; margin: 18px 0 0; background: #1e293b; }
 
-  .arrow {
-    position: absolute; top: 50%; transform: translateY(-50%); z-index: 1; width: 40px; height: 40px; border-radius: 50%;
-    display: grid; place-items: center; padding: 0; border: 1px solid #334155; background: rgba(15, 23, 42, 0.92);
-    color: #e2e8f0; cursor: pointer; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
-  }
-  .arrow:hover { background: #1e293b; }
-  .arrow.left { left: 8px; }
-  .arrow.right { right: 8px; }
 
   /* ปุ่มย่อ/ขยาย */
   .collapse, .pull.top {
@@ -248,16 +275,16 @@
     color: #94a3b8; cursor: pointer; font: 600 13px ui-monospace, monospace;
   }
   .collapse { bottom: -24px; }
-  .pull.top { top: 0; height: 28px; }
+  .pull.top { top: 56px; height: 26px; font-family: system-ui, sans-serif; font-size: 12px; }
   .collapse:hover, .pull:hover { color: #f8fafc; }
 
   /* รายการเรื่องด้านขวา */
   .list {
-    position: absolute; top: 176px; right: 16px; bottom: 16px; width: 330px; box-sizing: border-box;
+    position: absolute; top: 184px; right: 16px; bottom: 16px; width: 330px; box-sizing: border-box;
     display: flex; flex-direction: column; padding: 16px; background: rgba(15, 23, 42, 0.92);
     border: 1px solid #1e293b; border-radius: 14px;
   }
-  .list.full { top: 40px; }
+  .list.full { top: 96px; }
   h3 { margin: 0 0 12px; display: flex; align-items: center; gap: 8px; font-size: 17px; color: #f8fafc; }
   .n { font-size: 15px; background: #1e293b; color: #cbd5e1; border-radius: 999px; padding: 1px 10px; }
   .n.alert { background: #dc2626; color: #fff; }
@@ -275,7 +302,31 @@
     background: #111c31; border: 1px solid #1e293b; border-left: 5px solid var(--c);
   }
   .main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-  .main b { font-size: 19px; color: #f8fafc; }
+  .main .name {
+    align-self: flex-start; border: 0; background: none; padding: 0; text-align: left; cursor: pointer;
+    font: 700 19px system-ui, sans-serif; color: #f8fafc; text-decoration: underline transparent; text-underline-offset: 4px;
+  }
+  .main .name:hover { color: #93c5fd; text-decoration-color: #93c5fd; }
+
+  /* ป๊อปอัปบนผัง */
+  .pop {
+    position: absolute; transform: translate(-50%, calc(-100% - 14px)); min-width: 190px; padding: 12px 14px; box-sizing: border-box;
+    border-radius: 12px; background: #0b1220; border: 1px solid #334155; border-top: 4px solid var(--c);
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.55); display: flex; flex-direction: column; gap: 4px;
+  }
+  .pop::after {
+    content: ''; position: absolute; left: 50%; bottom: -8px; transform: translateX(-50%) rotate(45deg);
+    width: 14px; height: 14px; background: #0b1220; border-right: 1px solid #334155; border-bottom: 1px solid #334155;
+  }
+  .ph { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .ph b { font-size: 20px; color: #f8fafc; }
+  .px { width: 24px; height: 24px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 6px; background: transparent; color: #64748b; cursor: pointer; }
+  .px:hover { background: #1e293b; color: #f8fafc; }
+  .pst { display: flex; align-items: center; gap: 6px; font-size: 14px; color: #cbd5e1; }
+  .pst i { width: 10px; height: 10px; border-radius: 50%; background: var(--c); }
+  .pt { font: 700 26px ui-monospace, monospace; color: #f8fafc; }
+  .pstage { font-size: 12.5px; color: #94a3b8; }
+  .pstage.open { color: #fca5a5; font-weight: 600; }
   .main span { font-size: 13px; color: #94a3b8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .side { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
   .t { font: 700 19px ui-monospace, monospace; color: #f8fafc; }
@@ -286,11 +337,11 @@
 
   /* แถบดึงรายการกลับ (ตอนซ่อน) */
   .pull.side {
-    position: absolute; top: 176px; right: 0; display: flex; flex-direction: column; align-items: center; gap: 10px;
+    position: absolute; top: 184px; right: 0; display: flex; flex-direction: column; align-items: center; gap: 10px;
     padding: 12px 8px; border: 1px solid #1e293b; border-right: 0; border-radius: 12px 0 0 12px;
     background: rgba(15, 23, 42, 0.95); color: #94a3b8; cursor: pointer; font: 600 13px system-ui, sans-serif;
   }
-  .pull.side.full { top: 40px; }
+  .pull.side.full { top: 96px; }
   .vt { writing-mode: vertical-rl; letter-spacing: 0.02em; }
   .badge {
     min-width: 26px; height: 26px; padding: 0 6px; box-sizing: border-box; border-radius: 999px; display: grid; place-items: center;
