@@ -7,6 +7,23 @@ const lineName = (id: string) => app.site.lines.find((l) => l.id === id)?.name ?
 const stateName = (id: string) => app.site.andonStates.find((s) => s.id === id)?.name ?? '';
 
 export const guarded = {
+  async cancelIncident(id: string) {
+    const i = app.site.incidents.find((x) => x.id === id);
+    if (!i) return;
+    if (await ask({ title: `ยกเลิกเรื่อง Andon ของ ${assetName(i.assetId)}?`, message: 'ใช้เมื่อแจ้งผิด เรื่องจะถูกปิดด้วยสาเหตุ "แจ้งผิด" และยังเก็บในประวัติ', confirmText: 'ยกเลิกเรื่อง' }))
+      actions.resolveIncident(id, 'แจ้งผิด');
+  },
+
+  async removeReason(index: number) {
+    const r = app.site.reasons[index];
+    if (r === undefined) return;
+    if (await ask({ title: `ลบสาเหตุ "${r}"?`, message: 'เรื่องเก่าที่เคยใช้สาเหตุนี้ยังเก็บชื่อเดิมไว้' })) actions.removeReason(index);
+  },
+
+  async resetReasons() {
+    if (await ask({ title: 'คืนสาเหตุเริ่มต้น?', message: 'รายการสาเหตุที่แก้ไว้จะถูกแทนด้วยค่าเริ่มต้น', confirmText: 'คืนค่า' })) actions.resetReasons();
+  },
+
   /** เพิ่มเครื่องเข้าไลน์: ถ้าอยู่ไลน์อื่นแล้ว ถามก่อนว่าจะย้ายไหม */
   async addToLine(assetId: string, lineId: string) {
     const a = app.site.assets.find((x) => x.id === assetId);

@@ -2,6 +2,8 @@
   import { MODELS, CATEGORIES } from '../domain/catalog';
   import { app, actions, andonColors } from '../stores/site.svelte';
   import { guarded } from '../stores/guarded';
+  import { activeIncident } from '../stores/site.svelte';
+  import IncidentCard from './IncidentCard.svelte';
 
   let asset = $derived(app.site.assets.find((a) => a.id === app.selectedId));
   let base = $derived(asset ? MODELS[asset.kind] : null);
@@ -9,6 +11,8 @@
   let editable = $derived(app.mode === 'edit');
   let line = $derived(asset?.lineId ? app.site.lines.find((l) => l.id === asset!.lineId) : undefined);
   let shown = $derived(asset ? andonColors(app.site)[asset.id] : undefined);
+  // สถานะที่แจ้งได้ = ทุกสถานะที่ระดับมากกว่า 0 (ไม่รวมสถานะปกติและสถานะของระบบ)
+  let raisable = $derived(app.site.andonStates.filter((s) => !s.system && s.severity > 0));
   // ขยายมาแล้วกี่ครั้ง (0 = ขนาด default)
   let level = $derived(asset && base ? asset.w - base.w : 0);
 
@@ -69,13 +73,27 @@
       </div>
 
       {#if asset.andon}
-        <div class="states">
-          {#each app.site.andonStates as st (st.id)}
-            <button class:on={asset.status === st.id} style="--c:{st.color}" onclick={() => actions.setStatus(asset!.id, st.id)}>
-              <span class="dot"></span>{st.name}
-            </button>
-          {/each}
-        </div>
+        {@const inc = activeIncident(asset.id)}
+        {@const cur = app.site.andonStates.find((x) => x.id === asset!.status)}
+        <p class="cur">
+          <span class="dot" style="background:{cur?.color ?? '#94a3b8'}"></span>
+          สถานะตอนนี้: <b>{cur?.name ?? '-'}</b>
+        </p>
+        {#if inc}
+          <IncidentCard incident={inc} showAsset={false} />
+        {:else}
+          <span class="lbl">แจ้ง Andon</span>
+          <div class="states">
+            {#each raisable as st (st.id)}
+              <button style="--c:{st.color}" disabled={cur?.system === 'offline'} onclick={() => actions.raiseAndon(asset!.id, st.id)}>
+                <span class="dot"></span>{st.name}
+              </button>
+            {/each}
+          </div>
+          <button class="offline" onclick={() => actions.setOffline(asset!.id, cur?.system !== 'offline')}>
+            {cur?.system === 'offline' ? '↺ กลับมาเชื่อมต่อแล้ว' : 'ตั้งเป็นขาดการเชื่อมต่อ'}
+          </button>
+        {/if}
         {#if line?.mode === 'byLine'}
           <p class="note">
             <span class="dot" style="background:{shown}"></span>
@@ -144,6 +162,11 @@
   .states button:hover { border-color: var(--c); }
   .states button.on { border-color: var(--c); background: color-mix(in srgb, var(--c) 12%, white); color: #0f172a; font-weight: 600; }
   .states .dot { background: var(--c); }
+  .states button:disabled { opacity: 0.4; cursor: default; }
+  .cur { margin: 0; display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: #475569; }
+  .cur b { color: #0f172a; }
+  .offline { align-self: flex-start; border: 0; background: none; padding: 0; font: 11.5px system-ui, sans-serif; color: #64748b; cursor: pointer; }
+  .offline:hover { color: #0f172a; text-decoration: underline; }
   .dot { width: 9px; height: 9px; border-radius: 50%; flex: none; display: inline-block; }
   .note { margin: 0; font-size: 11.5px; line-height: 1.5; color: #64748b; display: flex; gap: 6px; align-items: baseline; }
 

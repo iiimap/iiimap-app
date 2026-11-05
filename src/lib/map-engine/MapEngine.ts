@@ -462,6 +462,21 @@ export class MapEngine {
   }
 
   private flyGoal: THREE.Vector3 | null = null;
+  private blinking = new Set<string>();
+
+  /** ไฟ Andon กะพริบ: เรื่องที่ยังไม่มีคนรับเรื่อง */
+  setBlinking(ids: string[]) {
+    const next = new Set(ids);
+    // ตัวที่เลิกกะพริบ: คืนความสว่างปกติ
+    for (const id of this.blinking) if (!next.has(id)) this.setLightIntensity(id, 0.7);
+    this.blinking = next;
+  }
+
+  private setLightIntensity(id: string, v: number) {
+    this.assetMeshes.get(id)?.traverse((o) => {
+      if (o.userData.statusLight) ((o as THREE.Mesh).material as THREE.MeshStandardMaterial).emissiveIntensity = v;
+    });
+  }
 
   /**
    * เลื่อนกล้องไปหาจุด (x, z) บนผังแบบนุ่มนวล ไม่เปลี่ยนระดับซูม
@@ -669,6 +684,10 @@ export class MapEngine {
 
   private loop = () => {
     this.frame = requestAnimationFrame(this.loop);
+    if (this.blinking.size) {
+      const v = 0.15 + 1.1 * (0.5 + 0.5 * Math.sin(performance.now() / 160));
+      for (const id of this.blinking) this.setLightIntensity(id, v);
+    }
     // เลื่อนกล้องไปหาเป้าหมายแบบนุ่มนวล
     if (this.flyGoal) {
       this.target.lerp(this.flyGoal, 0.16);

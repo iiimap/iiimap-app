@@ -55,6 +55,24 @@ export interface Kpi {
   better: 'lower' | 'higher'; // ค่าต่ำดี (เช่น MTTR) หรือค่าสูงดี (เช่น MTBF)
 }
 
+/**
+ * เรื่อง Andon 1 ครั้ง (บันทึกเหตุการณ์ ใช้คำนวณ KPI)
+ * ขั้นตอน: เปิดเรื่อง → รับเรื่อง → ส่งต่อ (ถ้าจำเป็น) → ปิดเรื่อง พร้อมสาเหตุ
+ */
+export interface Incident {
+  id: string;
+  assetId: string;
+  lineId: string | null; // ไลน์ตอนเปิดเรื่อง
+  stateId: string; // สถานะ Andon ที่แจ้ง เช่น alarm, material
+  openedAt: number; // เวลา (ms)
+  ackAt: number | null; // รับเรื่อง
+  escalatedAt: number | null; // ส่งต่อ
+  resolvedAt: number | null; // ปิดเรื่อง
+  reason: string | null; // สาเหตุตอนปิดเรื่อง
+}
+
+export type IncidentStage = 'open' | 'ack' | 'escalated' | 'resolved';
+
 export interface Site {
   id: string;
   tenantId: string;
@@ -65,5 +83,7 @@ export interface Site {
   andonStates: AndonState[];
   metrics: MetricsConfig;
   kpis: Kpi[];
+  reasons: string[]; // สาเหตุ (reason code) ให้เลือกตอนปิดเรื่อง
+  incidents: Incident[]; // ประวัติการแจ้ง Andon
   assets: Asset[];
 }

@@ -33,7 +33,7 @@
     const { width, depth, id } = app.site;
     engine?.loadSite({
       width, depth, id, name: '', tenantId: '',
-      lines: [], andonStates: [], metrics: { failureStates: [] }, kpis: [], assets: []
+      lines: [], andonStates: [], metrics: { failureStates: [] }, kpis: [], reasons: [], incidents: [], assets: []
     });
   });
 
@@ -54,6 +54,12 @@
   });
   $effect(() => {
     engine?.setGridVisible(app.showGrid);
+  });
+
+  // ไฟกะพริบ = เรื่อง Andon ที่ยังรอรับเรื่อง
+  $effect(() => {
+    const ids = app.site.incidents.filter((i) => i.resolvedAt === null && i.ackAt === null).map((i) => i.assetId);
+    engine?.setBlinking(ids);
   });
 
   // ไฮไลต์สมาชิกของไลน์ที่กำลังดู (รวมไลน์ที่เพิ่งสร้าง)

@@ -1,9 +1,9 @@
 import { emptySite } from '../domain/sample';
 import { MODELS } from '../domain/catalog';
-import { DEFAULT_ANDON_STATES, DEFAULT_KPIS, LINE_COLORS, SEVERITY_MAX, clampSeverity } from '../domain/defaults';
+import { DEFAULT_ANDON_STATES, DEFAULT_KPIS, DEFAULT_REASONS, INCIDENT_LIMIT, LINE_COLORS, SEVERITY_MAX, clampSeverity } from '../domain/defaults';
 import type { KpiPeriod } from '../domain/kpi';
 import { footprint, snapAxis } from '../domain/geometry';
-import type { AndonState, Asset, AssetKind, Kpi, LineMode, Site } from '../domain/types';
+import type { AndonState, Asset, AssetKind, Incident, Kpi, LineMode, Site } from '../domain/types';
 import { loadLocal, saveLocal } from './persist';
 import { checkFormula } from '../domain/formula';
 
@@ -87,6 +87,10 @@ function clearDraft() {
   draftOrigin = {};
 }
 
+// ================= นาฬิกา (ใช้แสดงเวลาที่ผ่านไปของเรื่อง Andon) =================
+export const clock = $state({ now: Date.now() });
+setInterval(() => (clock.now = Date.now()), 1000);
+
 // ================= บันทึกอัตโนมัติ =================
 // แก้ผังเมื่อไหร่ รอ 0.5 วินาทีหลังแก้ครั้งสุดท้ายแล้วค่อยบันทึก
 let saveTimer: ReturnType<typeof setTimeout> | undefined;
@@ -120,7 +124,8 @@ const snapshot = () =>
     lines: app.site.lines,
     andonStates: app.site.andonStates,
     metrics: app.site.metrics,
-    kpis: app.site.kpis
+    kpis: app.site.kpis,
+    reasons: app.site.reasons
   });
 
 function restore(json: string) {
@@ -133,6 +138,13 @@ function restore(json: string) {
   app.site.andonStates = s.andonStates;
   app.site.metrics = s.metrics;
   app.site.kpis = s.kpis;
+  app.site.reasons = s.reasons;
+  // ประวัติ Andon ไม่ถูกย้อนกลับ (เป็นบันทึกเหตุการณ์จริง) → ใส่สถานะของเรื่องที่ยังเปิดอยู่กลับให้เครื่อง
+  for (const i of app.site.incidents) {
+    if (i.resolvedAt !== null) continue;
+    const a = app.site.assets.find((x) => x.id === i.assetId);
+    if (a) a.status = i.stateId;
+  }
   if (app.kpiForm?.id && !app.site.kpis.some((k) => k.id === app.kpiForm!.id)) app.kpiForm = null;
   if (!app.site.assets.some((a) => a.id === app.selectedId)) app.selectedId = null;
   if (!app.site.lines.some((l) => l.id === app.activeLineId)) app.activeLineId = null;
@@ -258,6 +270,11 @@ export function notify(text: string) {
   app.toast = text;
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => (app.toast = ''), 2500);
+}
+
+/** เรื่อง Andon ที่ยังเปิดอยู่ของเครื่องนี้ */
+export function activeIncident(assetId: string): Incident | undefined {
+  return app.site.incidents.find((i) => i.assetId === assetId && i.resolvedAt === null);
 }
 
 const find = (id: string) => app.site.assets.find((a) => a.id === id);
@@ -469,6 +486,12 @@ export const actions = {
 
   remove(id: string) {
     if (!find(id)) return;
+    for (const i of app.site.incidents) {
+      if (i.assetId === id && i.resolvedAt === null) {
+        i.resolvedAt = Date.now();
+        i.reason = 'เครื่องถูกลบออกจากผัง';
+      }
+    }
     checkpoint();
     app.site.assets = app.site.assets.filter((a) => a.id !== id);
     if (app.selectedId === id) app.selectedId = null;
@@ -487,6 +510,83 @@ export const actions = {
     if (!a || a.status === stateId) return;
     checkpoint();
     a.status = stateId;
+  },
+
+  // ---------- แจ้ง Andon (หน้าไลน์) ----------
+  // ไม่ลงประวัติย้อนกลับ (Ctrl+Z) เพราะเป็นเหตุการณ์จริงที่ต้องเก็บไว้คำนวณ KPI
+
+  /** แจ้ง Andon: เปิดเรื่องใหม่ ไฟของเครื่องเปลี่ยนเป็นสีของสถานะที่แจ้ง */
+  raiseAndon(assetId: string, stateId: string) {
+    const a = find(assetId);
+    const st = app.site.andonStates.find((x) => x.id === stateId);
+    if (!a || !a.andon || !st || st.system) return;
+    if (activeIncident(assetId)) return; // เครื่องหนึ่งมีเรื่องเปิดได้ทีละเรื่อง
+    const inc: Incident = {
+      id: newId('inc'),
+      assetId,
+      lineId: a.lineId,
+      stateId,
+      openedAt: Date.now(),
+      ackAt: null,
+      escalatedAt: null,
+      resolvedAt: null,
+      reason: null
+    };
+    app.site.incidents.push(inc);
+    if (app.site.incidents.length > INCIDENT_LIMIT) app.site.incidents.splice(0, app.site.incidents.length - INCIDENT_LIMIT);
+    a.status = stateId;
+  },
+
+  ackIncident(id: string) {
+    const i = app.site.incidents.find((x) => x.id === id);
+    if (i && i.ackAt === null && i.resolvedAt === null) i.ackAt = Date.now();
+  },
+
+  escalateIncident(id: string) {
+    const i = app.site.incidents.find((x) => x.id === id);
+    if (!i || i.escalatedAt !== null || i.resolvedAt !== null) return;
+    const now = Date.now();
+    if (i.ackAt === null) i.ackAt = now;
+    i.escalatedAt = now;
+  },
+
+  /** ปิดเรื่อง (ต้องเลือกสาเหตุ) ไฟกลับเป็นสถานะปกติ */
+  resolveIncident(id: string, reason: string) {
+    const i = app.site.incidents.find((x) => x.id === id);
+    if (!i || i.resolvedAt !== null || !reason.trim()) return;
+    const now = Date.now();
+    if (i.ackAt === null) i.ackAt = now;
+    i.resolvedAt = now;
+    i.reason = reason.trim();
+    const a = find(i.assetId);
+    if (a && a.status === i.stateId) a.status = defaultStatus();
+  },
+
+  /** ตั้ง/ยกเลิกสถานะขาดการเชื่อมต่อ (ไม่นับเป็นเรื่อง Andon) */
+  setOffline(assetId: string, on: boolean) {
+    const a = find(assetId);
+    const off = app.site.andonStates.find((s) => s.system === 'offline');
+    if (!a || !off || activeIncident(assetId)) return;
+    a.status = on ? off.id : defaultStatus();
+  },
+
+  // ---------- สาเหตุ (reason codes) ----------
+  addReason() {
+    checkpoint();
+    let n = 1;
+    while (app.site.reasons.includes(`สาเหตุใหม่ ${n}`)) n++;
+    app.site.reasons.push(`สาเหตุใหม่ ${n}`);
+  },
+
+  removeReason(index: number) {
+    if (index < 0 || index >= app.site.reasons.length) return;
+    checkpoint();
+    app.site.reasons.splice(index, 1);
+  },
+
+  resetReasons() {
+    checkpoint();
+    app.site.reasons = [...DEFAULT_REASONS];
   },
 
   // ---------- Line ----------

@@ -1,7 +1,16 @@
 <script lang="ts">
-  // แผงตั้งค่า Andon: สีและความหมายของแต่ละสถานะ (KPI อยู่ในแท็บ KPIs)
+  // แผง Andon: เรื่องที่เปิดอยู่ (หน้าไลน์) + ประวัติ + ตั้งค่าสถานะ/สี + สาเหตุ (KPI อยู่ในแท็บ KPIs)
   import { app, actions } from '../../stores/site.svelte';
   import { guarded } from '../../stores/guarded';
+  import IncidentCard from '../IncidentCard.svelte';
+  import { fmtDuration, fmtTime } from '../../domain/incident';
+
+  let open = $derived(
+    app.site.incidents.filter((i) => i.resolvedAt === null).sort((a, b) => Number(a.ackAt !== null) - Number(b.ackAt !== null) || a.openedAt - b.openedAt)
+  );
+  let recent = $derived(app.site.incidents.filter((i) => i.resolvedAt !== null).slice(-10).reverse());
+  const assetName = (id: string) => app.site.assets.find((a) => a.id === id)?.name ?? '(ถูกลบ)';
+  const stateOf = (id: string) => app.site.andonStates.find((s) => s.id === id);
 
   let editable = $derived(app.mode === 'edit');
   let nonSystem = $derived(app.site.andonStates.filter((s) => !s.system).length);
@@ -12,9 +21,38 @@
 </script>
 
 <aside class="panel">
-  <header><h3>ตั้งค่า Andon</h3></header>
+  <header><h3>Andon</h3></header>
 
   <div class="scroll">
+    <section>
+      <h4>เรื่องที่เปิดอยู่ <span class="count" class:alert={open.length > 0}>{open.length}</span></h4>
+      {#if open.length === 0}
+        <p class="hint">ไม่มีเรื่องค้าง · แจ้ง Andon ได้จากแผงคุณสมบัติของเครื่อง (คลิกเครื่องบนผัง)</p>
+      {:else}
+        <div class="board">
+          {#each open as inc (inc.id)}
+            <IncidentCard incident={inc} />
+          {/each}
+        </div>
+      {/if}
+    </section>
+
+    {#if recent.length}
+      <section>
+        <h4>ปิดเรื่องล่าสุด</h4>
+        <ul class="hist">
+          {#each recent as inc (inc.id)}
+            <li>
+              <i style="background:{stateOf(inc.stateId)?.color ?? '#94a3b8'}"></i>
+              <b>{assetName(inc.assetId)}</b>
+              <span>{stateOf(inc.stateId)?.name ?? inc.stateId} · {inc.reason}</span>
+              <small>{fmtTime(inc.openedAt)} · {fmtDuration((inc.resolvedAt ?? inc.openedAt) - inc.openedAt)}</small>
+            </li>
+          {/each}
+        </ul>
+      </section>
+    {/if}
+
     <section>
       <h4>สถานะและสี</h4>
       <p class="hint">ตั้งชื่อและสีได้ตามมาตรฐานของโรงงาน · <b>ระดับ 0–9</b> (0 = ปกติ) ยิ่งสูงยิ่งร้ายแรง ใช้ตัดสินสีรวมของไลน์แบบ ByLine</p>
@@ -50,6 +88,27 @@
       {/if}
     </section>
 
+    <section>
+      <h4>สาเหตุ (เลือกตอนปิดเรื่อง)</h4>
+      <div class="reasons">
+        {#each app.site.reasons as _, i}
+          <div class="rrow">
+            <input class="txt" bind:value={app.site.reasons[i]} disabled={!editable}
+              onfocus={() => actions.beginEdit()} onchange={() => actions.commitEdit()} />
+            {#if editable}
+              <button class="icon" title="ลบสาเหตุ" onclick={() => guarded.removeReason(i)}>×</button>
+            {/if}
+          </div>
+        {/each}
+      </div>
+      {#if editable}
+        <div class="btns">
+          <button onclick={() => actions.addReason()}>+ เพิ่มสาเหตุ</button>
+          <button class="ghost" onclick={() => guarded.resetReasons()}>คืนค่าเริ่มต้น</button>
+        </div>
+      {/if}
+    </section>
+
     <p class="note">ตัวชี้วัด เช่น MTTR / MTBF และสถานะที่นับเป็น "เสีย" ย้ายไปอยู่ที่แท็บ <b>KPIs</b></p>
   </div>
 </aside>
@@ -78,6 +137,17 @@
   .txt:focus, .num:focus, .formula input:focus { outline: none; border-color: #93c5fd; box-shadow: 0 0 0 2px #dbeafe; }
   input:disabled { background: #f8fafc; color: #475569; }
   .sys { font-size: 11px; color: #64748b; background: #f1f5f9; border-radius: 6px; padding: 5px 4px; text-align: center; cursor: help; white-space: nowrap; }
+  .count { font-size: 11px; color: #475569; background: #f1f5f9; border-radius: 999px; padding: 1px 8px; margin-left: 4px; }
+  .count.alert { color: #fff; background: #dc2626; }
+  .board { display: flex; flex-direction: column; gap: 8px; }
+  .hist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+  .hist li { display: grid; grid-template-columns: 10px auto 1fr; column-gap: 6px; align-items: baseline; font-size: 12px; color: #475569; }
+  .hist i { width: 8px; height: 8px; border-radius: 50%; }
+  .hist b { color: #0f172a; }
+  .hist span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .hist small { grid-column: 2 / -1; font-size: 11px; color: #94a3b8; }
+  .reasons { display: flex; flex-direction: column; gap: 4px; }
+  .rrow { display: grid; grid-template-columns: 1fr 24px; gap: 6px; align-items: center; }
   .icon { border: 0; background: transparent; color: #94a3b8; font-size: 16px; cursor: pointer; border-radius: 6px; height: 26px; }
   .icon:hover:not(:disabled) { background: #fef2f2; color: #dc2626; }
   .icon:disabled { opacity: 0.3; cursor: default; }

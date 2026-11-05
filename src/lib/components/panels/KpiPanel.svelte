@@ -3,12 +3,12 @@
   // กล่องตั้งค่าเปิดเฉพาะ KPI ที่เลือก คลิกที่อื่นแล้วปิด (ถ้ายังไม่บันทึก จะถามก่อน)
   import { METRIC_VARIABLES, checkFormula, evalFormula, SAMPLE_VALUES } from '../../domain/formula';
   import { PERIODS, KPI_UNITS, BETTER_LABEL, computeKpis, fmtNum } from '../../domain/kpi';
-  import { app, actions, kpiFormDirty } from '../../stores/site.svelte';
+  import { app, actions, kpiFormDirty, clock } from '../../stores/site.svelte';
   import { guarded } from '../../stores/guarded';
   import Icon from '../ribbon/Icon.svelte';
 
   let editable = $derived(app.mode === 'edit');
-  let result = $derived(computeKpis(app.site, app.kpiScope, app.kpiPeriod));
+  let result = $derived(computeKpis(app.site, app.kpiScope, app.kpiPeriod, clock.now));
   let scopeName = $derived(app.kpiScope === 'site' ? 'ทั้งโรงงาน' : (app.site.lines.find((l) => l.id === app.kpiScope)?.name ?? 'ทั้งโรงงาน'));
   let dirty = $derived(kpiFormDirty());
 
@@ -187,7 +187,11 @@
       {/if}
     </section>
 
-    <p class="note">ตอนนี้ค่าที่แสดงมาจาก<b>ข้อมูลตัวอย่าง</b> เพื่อทดลองสูตรและหน้าจอ ค่าจริงจะคำนวณจากประวัติการแจ้ง Andon เมื่อเชื่อมระบบบันทึกเหตุการณ์ (backend)</p>
+    {#if result.real}
+      <p class="note">ค่าคำนวณจาก<b>ประวัติการแจ้ง Andon จริง</b> ในช่วงเวลาที่เลือก (เก็บในเบราว์เซอร์นี้ จนกว่าจะเชื่อม backend)</p>
+    {:else}
+      <p class="note">ยังไม่มีการแจ้ง Andon จึงแสดง<b>ข้อมูลตัวอย่าง</b> เพื่อทดลองสูตร พอเริ่มแจ้ง Andon ค่าจะเปลี่ยนเป็นข้อมูลจริงทันที</p>
+    {/if}
   </div>
 </aside>
 

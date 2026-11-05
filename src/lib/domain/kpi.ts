@@ -68,10 +68,48 @@ export function kpiValue(k: Kpi, values: Record<string, number>): number {
 
 export const fmtNum = (v: number) => (Number.isFinite(v) ? v.toLocaleString('th-TH', { maximumFractionDigits: 2 }) : '—');
 
-/** ค่า KPI ทุกตัวของขอบเขตและช่วงเวลาที่เลือก */
-export function computeKpis(site: Site, scope: KpiScope, period: KpiPeriod) {
-  const { values, machines } = demoVariables(site, scope, period);
+/**
+ * ค่าตัวแปรจริงจากประวัติการแจ้ง Andon (ช่วงเวลาย้อนหลังจากตอนนี้)
+ * - failures:     จำนวนเรื่องที่เปิดในช่วงนี้ ของสถานะที่ตั้งว่านับเป็น "เสีย"
+ * - repairTime:   เวลาตั้งแต่เปิดถึงปิดเรื่อง (เฉพาะเรื่องที่นับเป็นเสียและปิดแล้ว)
+ * - responseTime: เวลาตั้งแต่เปิดถึงรับเรื่อง
+ * - downTime:     เวลาที่มีเรื่องเปิดค้างอยู่ทุกสาเหตุ (เฉพาะส่วนที่อยู่ในช่วงเวลา)
+ * - plannedTime:  จำนวนเครื่อง × เวลาทั้งช่วง / runTime = plannedTime − downTime
+ */
+export function realVariables(site: Site, scope: KpiScope, period: KpiPeriod, now: number) {
+  const days = PERIODS.find((p) => p.id === period)?.days ?? 1;
+  const windowMs = days * 86400000;
+  const start = now - windowMs;
+  const machines = site.assets.filter((a) => a.andon && (scope === 'site' || a.lineId === scope)).length;
+  const failSet = new Set(site.metrics.failureStates);
+  const v = { repairTime: 0, failures: 0, runTime: 0, plannedTime: 0, downTime: 0, responseTime: 0 };
+  const MIN = 60000;
+  for (const i of site.incidents) {
+    if (scope !== 'site' && i.lineId !== scope) continue;
+    const end = i.resolvedAt ?? now;
+    if (i.openedAt >= now || end <= start) continue;
+    v.downTime += (Math.min(end, now) - Math.max(i.openedAt, start)) / MIN;
+    if (i.openedAt < start) continue;
+    if (i.ackAt !== null) v.responseTime += (i.ackAt - i.openedAt) / MIN;
+    if (failSet.has(i.stateId)) {
+      v.failures += 1;
+      if (i.resolvedAt !== null) v.repairTime += (i.resolvedAt - i.openedAt) / MIN;
+    }
+  }
+  v.plannedTime = machines * (windowMs / MIN);
+  v.runTime = Math.max(0, v.plannedTime - v.downTime);
+  return { values: v, machines };
+}
+
+/**
+ * ค่า KPI ทุกตัวของขอบเขตและช่วงเวลาที่เลือก
+ * มีประวัติการแจ้ง Andon แล้ว = ใช้ข้อมูลจริง / ยังไม่มีเลย = ใช้ข้อมูลตัวอย่าง
+ */
+export function computeKpis(site: Site, scope: KpiScope, period: KpiPeriod, now = Date.now()) {
+  const real = site.incidents.length > 0;
+  const { values, machines } = real ? realVariables(site, scope, period, now) : demoVariables(site, scope, period);
   return {
+    real,
     machines,
     values,
     items: site.kpis.map((k) => {

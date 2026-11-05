@@ -3,7 +3,7 @@
   import type { MapEngine } from '../../map-engine/MapEngine';
   import { getThumbnails } from '../../map-engine/thumbnails';
   import { CATEGORIES, MODELS } from '../../domain/catalog';
-  import { app, actions, history, clip } from '../../stores/site.svelte';
+  import { app, actions, history, clip, clock } from '../../stores/site.svelte';
   import FileMenu from '../FileMenu.svelte';
   import RButton from './RButton.svelte';
   import RGroup from './RGroup.svelte';
@@ -16,7 +16,7 @@
 
   let { engine }: { engine?: MapEngine } = $props();
 
-  const VERSION = 'v0.23';
+  const VERSION = 'v0.24';
   const SAVE_TEXT = { saved: 'บันทึกแล้ว', saving: 'กำลังบันทึก…', error: 'บันทึกไม่สำเร็จ' };
 
   const TABS = [
@@ -76,7 +76,8 @@
 
   let allFramed = $derived(app.site.lines.length > 0 && app.site.lines.every((l) => app.frameLines.includes(l.id)));
 
-  let kpiResult = $derived(computeKpis(app.site, app.kpiScope, app.kpiPeriod));
+  let kpiResult = $derived(computeKpis(app.site, app.kpiScope, app.kpiPeriod, clock.now));
+  let openIncidents = $derived(app.site.incidents.filter((i) => i.resolvedAt === null));
 
   let thumbs = $state<Record<string, string>>({});
   onMount(() => {
@@ -212,6 +213,13 @@
         <RButton size="large" icon="paste" label="เพิ่มสถานะ" disabled={!editing} onclick={() => actions.addAndonState()} />
         <RButton size="large" icon="undo" label="คืนค่าสี" title="คืนสีและชื่อสถานะเริ่มต้น" disabled={!editing} onclick={() => guarded.resetAndonStates()} />
       </RGroup>
+      <RGroup label="เรื่องที่เปิดอยู่">
+        <div class="incsum">
+          <b class:alert={openIncidents.length > 0}>{openIncidents.length}</b>
+          <span>เรื่อง</span>
+          <small>รอรับเรื่อง {openIncidents.filter((i) => i.ackAt === null).length}</small>
+        </div>
+      </RGroup>
       <RGroup label="จำนวนเครื่องตามสถานะ (เฉพาะเครื่องที่เปิด Andon)">
         <div class="legend">
           {#each app.site.andonStates as st (st.id)}
@@ -243,7 +251,7 @@
           </div>
         </div>
       </RGroup>
-      <RGroup label="ค่าปัจจุบัน (ข้อมูลตัวอย่าง) · กดเพื่อตั้งค่า">
+      <RGroup label={kpiResult.real ? 'ค่าปัจจุบัน (จากการแจ้ง Andon) · กดเพื่อตั้งค่า' : 'ค่าปัจจุบัน (ข้อมูลตัวอย่าง) · กดเพื่อตั้งค่า'}>
         {#if kpiResult.items.length === 0}
           <span class="none">ยังไม่มี KPI</span>
         {:else}
@@ -368,6 +376,11 @@
   }
   .chip:hover:not(:disabled) { background: #f8fafc; border-color: var(--c); }
   .chip.on { background: color-mix(in srgb, var(--c) 14%, white); border-color: var(--c); font-weight: 600; }
+  .incsum { display: flex; flex-direction: column; align-items: center; justify-content: center; min-width: 76px; padding: 0 8px; }
+  .incsum b { font-size: 26px; line-height: 1.1; color: #0f172a; font-variant-numeric: tabular-nums; }
+  .incsum b.alert { color: #dc2626; }
+  .incsum span { font-size: 11.5px; color: #475569; }
+  .incsum small { font-size: 10.5px; color: #94a3b8; white-space: nowrap; }
   .kpifilter { display: flex; flex-direction: column; gap: 6px; padding-top: 4px; }
   .kpifilter select { font: 12.5px system-ui, sans-serif; padding: 4px 6px; border: 1px solid #e2e8f0; border-radius: 6px; background: #fff; max-width: 200px; }
   .periods { display: flex; background: #f1f5f9; border-radius: 6px; padding: 2px; }

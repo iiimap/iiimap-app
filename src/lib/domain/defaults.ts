@@ -22,6 +22,19 @@ export const DEFAULT_METRICS: MetricsConfig = {
   failureStates: ['alarm']
 };
 
+// สาเหตุตั้งต้น (ผู้ใช้เพิ่ม/แก้/ลบได้)
+export const DEFAULT_REASONS = [
+  'เครื่องจักรเสีย',
+  'รอวัตถุดิบ',
+  'ปัญหาคุณภาพ',
+  'เปลี่ยนแม่พิมพ์ / Setup',
+  'ขาดพนักงาน',
+  'อื่นๆ'
+];
+
+/** เก็บประวัติการแจ้งล่าสุดไม่เกินเท่านี้ (ในเบราว์เซอร์) */
+export const INCIDENT_LIMIT = 5000;
+
 // KPI ตั้งต้น (ผู้ใช้แก้ชื่อ สูตร หน่วย เป้าหมาย หรือลบได้ทั้งหมด)
 export const DEFAULT_KPIS: Kpi[] = [
   { id: 'kpi-mttr', name: 'MTTR', formula: 'repairTime / failures', unit: 'นาที', target: 60, better: 'lower' },

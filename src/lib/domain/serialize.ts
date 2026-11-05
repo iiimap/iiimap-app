@@ -1,10 +1,10 @@
 // แปลงผังเป็นไฟล์ / อ่านผังจากไฟล์ (ใช้ทั้งบันทึกอัตโนมัติ และ Export / Import)
-import type { AndonState, Asset, Kpi, Line, MetricsConfig, Site } from './types';
-import { DEFAULT_ANDON_STATES, DEFAULT_KPIS, DEFAULT_METRICS, OFFLINE_STATE, clampSeverity } from './defaults';
+import type { AndonState, Asset, Incident, Kpi, Line, MetricsConfig, Site } from './types';
+import { DEFAULT_ANDON_STATES, DEFAULT_KPIS, DEFAULT_METRICS, DEFAULT_REASONS, INCIDENT_LIMIT, OFFLINE_STATE, clampSeverity } from './defaults';
 import { MODELS } from './catalog';
 
 export const FILE_FORMAT = 'iiimap-site';
-export const FILE_VERSION = 3;
+export const FILE_VERSION = 4;
 
 export interface SiteFile {
   format: typeof FILE_FORMAT;
@@ -72,6 +72,26 @@ function readKpis(v: unknown, oldMetrics: any): Kpi[] {
   return kpis;
 }
 
+const numOrNull = (v: unknown) => (isNum(v) ? v : null);
+
+function readIncidents(v: unknown): Incident[] {
+  if (!Array.isArray(v)) return [];
+  return v
+    .filter((i) => i && isStr(i.id) && isStr(i.assetId) && isStr(i.stateId) && isNum(i.openedAt))
+    .map((i) => ({
+      id: i.id,
+      assetId: i.assetId,
+      lineId: isStr(i.lineId) ? i.lineId : null,
+      stateId: i.stateId,
+      openedAt: i.openedAt,
+      ackAt: numOrNull(i.ackAt),
+      escalatedAt: numOrNull(i.escalatedAt),
+      resolvedAt: numOrNull(i.resolvedAt),
+      reason: isStr(i.reason) ? i.reason : null
+    }))
+    .slice(-INCIDENT_LIMIT);
+}
+
 /** ตรวจและอ่านไฟล์ผัง (รองรับไฟล์เวอร์ชันเก่า) คืน null ถ้าไฟล์ไม่ถูกต้อง */
 export function fromFile(data: unknown): Site | null {
   const f = data as SiteFile;
@@ -111,6 +131,8 @@ export function fromFile(data: unknown): Site | null {
     andonStates,
     metrics: readMetrics(s.metrics),
     kpis: readKpis(s.kpis, s.metrics),
+    reasons: Array.isArray(s.reasons) ? s.reasons.filter(isStr) : [...DEFAULT_REASONS],
+    incidents: readIncidents(s.incidents),
     assets
   };
 }
