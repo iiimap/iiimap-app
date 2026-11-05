@@ -16,7 +16,7 @@
 
   let { engine }: { engine?: MapEngine } = $props();
 
-  const VERSION = 'v0.29';
+  const VERSION = 'v0.30';
   const SAVE_TEXT = { saved: 'บันทึกแล้ว', saving: 'กำลังบันทึก…', error: 'บันทึกไม่สำเร็จ' };
 
   const TABS = [
@@ -213,10 +213,10 @@
         <RButton size="large" icon="paste" label="เพิ่มสถานะ" disabled={!editing} onclick={() => actions.addAndonState()} />
         <RButton size="large" icon="undo" label="คืนค่าสี" title="คืนสีและชื่อสถานะเริ่มต้น" disabled={!editing} onclick={() => guarded.resetAndonStates()} />
       </RGroup>
-      <RGroup label="เรื่องที่เปิดอยู่">
+      <RGroup label="Andon ที่ยังไม่ปิด">
         <div class="incsum">
           <b class:alert={openIncidents.length > 0}>{openIncidents.length}</b>
-          <span>เรื่อง</span>
+          <span>รายการ</span>
           <small>รอรับเรื่อง {openIncidents.filter((i) => i.ackAt === null).length}</small>
         </div>
       </RGroup>
