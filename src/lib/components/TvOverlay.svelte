@@ -2,7 +2,7 @@
   // โหมดจอ TV: ใช้ธีมขาวแบบปกติ ตัวเลขใหญ่ อ่านจากไกลชัด
   // - แถบบน (ชื่อ + นาฬิกา) แสดงเสมอ / แถวการ์ดสถานะและ KPI ย่อเก็บได้ด้วยลูกศร
   // - การ์ดสถานะกับ KPI แบ่งครึ่ง เลื่อนซ้าย-ขวาแยกกันของใครของมัน
-  // - รายการ Andon ที่ยังไม่ปิด (ด้านขวา) ปิด/เปิดได้ ตอนปิดมีตัวเลขแจ้งเตือนสีแดง
+  // - รายการ ปัญหาที่ยังไม่ถูกแก้ไข (ด้านขวา) ปิด/เปิดได้ ตอนปิดมีตัวเลขแจ้งเตือนสีแดง
   // - กดรายการ (ทั้งบล็อก) = กล้องพาไปที่เครื่องนั้น + ป๊อปอัปรายละเอียดบนผัง
   import type { MapEngine } from '../map-engine/MapEngine';
   import { app, actions, clock } from '../stores/site.svelte';
@@ -71,6 +71,11 @@
   let focusInc = $derived(focusId ? app.site.incidents.find((i) => i.id === focusId) : undefined);
 
   function goTo(incId: string) {
+    // กดบล็อกเดิมซ้ำ = ปิดป๊อปอัป
+    if (focusId === incId) {
+      focusId = null;
+      return;
+    }
     const inc = app.site.incidents.find((i) => i.id === incId);
     const a = inc && app.site.assets.find((x) => x.id === inc.assetId);
     if (!inc || !a || !engine) return;
@@ -169,7 +174,7 @@
     {#if sideOpen}
       <aside class="list" class:full={!topOpen}>
         <h3>
-          Andon ที่ยังไม่ปิด
+          ปัญหาที่ยังไม่ถูกแก้ไข
           <span class="n" class:alert={open.length > 0}>{open.length}</span>
           {#if waiting}<span class="wait">รอรับเรื่อง {waiting}</span>{/if}
           <button class="hide" title="ซ่อนรายการ" aria-label="ซ่อนรายการ" onclick={() => (sideOpen = false)}>{@render chevron('right')}</button>
@@ -195,9 +200,9 @@
         </div>
       </aside>
     {:else}
-      <button class="pull side" class:full={!topOpen} title="แสดง Andon ที่ยังไม่ปิด" aria-label="แสดง Andon ที่ยังไม่ปิด {open.length} รายการ" onclick={() => (sideOpen = true)}>
+      <button class="pull side" class:full={!topOpen} title="แสดง ปัญหาที่ยังไม่ถูกแก้ไข" aria-label="แสดง ปัญหาที่ยังไม่ถูกแก้ไข {open.length} รายการ" onclick={() => (sideOpen = true)}>
         {@render chevron('left')}
-        <span class="vt">Andon ที่ยังไม่ปิด</span>
+        <span class="vt">ปัญหาที่ยังไม่ถูกแก้ไข</span>
         {#if open.length}<span class="badge">{open.length}</span>{/if}
       </button>
     {/if}
@@ -272,7 +277,7 @@
   .pull.top { top: 56px; height: 26px; background: #fff; }
   .collapse:hover, .pull:hover { color: #0f172a; }
 
-  /* รายการ Andon ที่ยังไม่ปิด (ขวา) */
+  /* รายการ ปัญหาที่ยังไม่ถูกแก้ไข (ขวา) */
   .list {
     position: absolute; top: 184px; right: 16px; bottom: 16px; width: 330px; box-sizing: border-box;
     display: flex; flex-direction: column; padding: 16px; background: rgba(255, 255, 255, 0.97);

@@ -25,7 +25,7 @@
 
   <div class="scroll">
     <section>
-      <h4>Andon ที่ยังไม่ปิด <span class="count" class:alert={open.length > 0}>{open.length}</span></h4>
+      <h4>ปัญหาที่ยังไม่ถูกแก้ไข <span class="count" class:alert={open.length > 0}>{open.length}</span></h4>
       {#if open.length === 0}
         <p class="hint">ไม่มีเรื่องค้าง · แจ้ง Andon ได้จากแผงคุณสมบัติของเครื่อง (คลิกเครื่องบนผัง)</p>
       {:else}
