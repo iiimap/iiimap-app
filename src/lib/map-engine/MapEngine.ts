@@ -504,6 +504,19 @@ export class MapEngine {
     this.setZoom(this.zoom * factor);
   }
 
+  /** ซูมให้เห็นทั้งผังพอดีจอ (ใช้ตอนเข้าโหมดจอ TV) */
+  fitSite() {
+    const w = this.container.clientWidth || 1;
+    const h = this.container.clientHeight || 1;
+    // มุม isometric: ผังกินพื้นที่บนจอประมาณ (กว้าง+ลึก) × 0.71 ทั้งแนวนอน และ × 0.41 แนวตั้ง
+    const span = this.siteSize.w + this.siteSize.d;
+    const needH = (span * 0.41) / 2 + 2;
+    const needW = (span * 0.71) / 2 + 2;
+    const viewH = Math.max(needH, needW * (h / w));
+    this.flyGoal = new THREE.Vector3(0, 0, 0);
+    this.setZoom(VIEW_SIZE / viewH);
+  }
+
   resetView() {
     this.target.set(0, 0, 0);
     this.angleGoal = this.angle - ((this.angle - Math.PI / 4) % (Math.PI * 2));

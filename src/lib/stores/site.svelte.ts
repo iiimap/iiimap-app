@@ -42,6 +42,7 @@ export const app = $state({
   zoom: 1,
   showGrid: true,
   showAllNames: false, // แสดงชื่อเครื่องทุกตัวบนผัง
+  tvMode: false, // โหมดจอ TV (แขวนหน้าไลน์)
   siteSettingsOpen: false, // หน้าต่างตั้งค่าผัง
   frameLines: [] as string[], // ไลน์ที่แสดงกรอบ (และชื่อเครื่องในไลน์)
   recent: loadRecent(), // โมเดลที่ใช้ล่าสุด (สูงสุด 6)
@@ -368,6 +369,25 @@ export const actions = {
     app.lineAddMode = null;
     // โหมดดูผัง: ไม่มีแท็บหน้าแรก / แทรก
     if (mode === 'view' && (app.ribbonTab === 'home' || app.ribbonTab === 'insert')) app.ribbonTab = 'view';
+  },
+
+  /** เข้าโหมดจอ TV: ดูผังอย่างเดียว ซ่อนเครื่องมือทั้งหมด */
+  enterTv() {
+    app.mode = 'view';
+    app.placing = null;
+    app.lineAddMode = null;
+    app.selectedId = null;
+    app.tvMode = true;
+    try {
+      document.documentElement.requestFullscreen?.().catch(() => {});
+    } catch {
+      /* เบราว์เซอร์ไม่อนุญาตเต็มจอ ก็ใช้โหมด TV ในหน้าต่างปกติ */
+    }
+  },
+
+  exitTv() {
+    app.tvMode = false;
+    if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
   },
 
   setTab(tab: RibbonTab) {

@@ -11,7 +11,9 @@
       ...new Set([
         app.selectedId,
         app.hoverId,
-        ...app.site.assets.filter((a) => app.showAllNames || (a.lineId && app.frameLines.includes(a.lineId))).map((a) => a.id)
+        ...app.site.assets.filter((a) => app.showAllNames || (a.lineId && app.frameLines.includes(a.lineId))).map((a) => a.id),
+        // โหมด TV: เครื่องที่มีเรื่อง Andon เปิดอยู่ แสดงชื่อเสมอ
+        ...(app.tvMode ? app.site.incidents.filter((i) => i.resolvedAt === null).map((i) => i.assetId) : [])
       ])
     ].filter((x): x is string => !!x)
   );

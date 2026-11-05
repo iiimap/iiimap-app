@@ -11,6 +11,7 @@
   import KpiPanel from '../lib/components/panels/KpiPanel.svelte';
   import Toast from '../lib/components/Toast.svelte';
   import SiteSettings from '../lib/components/SiteSettings.svelte';
+  import TvOverlay from '../lib/components/TvOverlay.svelte';
   import type { MapEngine } from '../lib/map-engine/MapEngine';
   import { app, actions } from '../lib/stores/site.svelte';
 
@@ -29,6 +30,11 @@
     }
     if (t.closest('input, select, textarea')) return;
 
+    if (e.code === 'Escape' && app.tvMode) {
+      actions.exitTv();
+      return;
+    }
+    if (app.tvMode) return; // โหมด TV: ปิดคีย์ลัดแก้ไขทั้งหมด
     if (e.code === 'Escape') {
       if (app.lineAddMode) app.lineAddMode = null;
       else if (app.placing) app.placing = null;
@@ -85,17 +91,20 @@
 <svelte:window onkeydown={onKey} />
 
 <main>
-  <Ribbon {engine} />
+  {#if !app.tvMode}<Ribbon {engine} />{/if}
   <div class="stage">
     <MapCanvas bind:engine />
     <Labels {engine} />
-    <LineConfig />
-    {#if app.ribbonTab === 'andon'}<AndonPanel />{/if}
-    {#if app.ribbonTab === 'kpi'}<KpiPanel />{/if}
-    <Properties />
+    {#if !app.tvMode}
+      <LineConfig />
+      {#if app.ribbonTab === 'andon'}<AndonPanel />{/if}
+      {#if app.ribbonTab === 'kpi'}<KpiPanel />{/if}
+      <Properties />
+    {/if}
+    <TvOverlay {engine} />
     <Toast />
   </div>
-  <StatusBar {engine} />
+  {#if !app.tvMode}<StatusBar {engine} />{/if}
 </main>
 
 <SiteSettings />

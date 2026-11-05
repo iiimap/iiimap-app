@@ -16,7 +16,7 @@
 
   let { engine }: { engine?: MapEngine } = $props();
 
-  const VERSION = 'v0.24';
+  const VERSION = 'v0.25';
   const SAVE_TEXT = { saved: 'บันทึกแล้ว', saving: 'กำลังบันทึก…', error: 'บันทึกไม่สำเร็จ' };
 
   const TABS = [
@@ -285,6 +285,7 @@
       </RGroup>
       <RGroup label="แสดง">
         <RButton size="large" icon="grid" label="เส้นกริด" active={app.showGrid} onclick={() => (app.showGrid = !app.showGrid)} />
+        <RButton size="large" icon="tv" label="จอ TV" title="โหมดจอ TV: ผังเต็มจอสำหรับแขวนหน้าไลน์ (Esc เพื่อออก)" onclick={() => actions.enterTv()} />
         <RButton size="large" icon="label" label="ชื่อทั้งหมด" title="แสดงชื่อเครื่องทุกตัวบนผัง" active={app.showAllNames} onclick={() => (app.showAllNames = !app.showAllNames)} />
         <button class="ddbtn dd-trigger" class:active={app.frameLines.length > 0} onclick={(e) => openDd(e, 'frames')}>
           <Icon name="zone" size={26} />
