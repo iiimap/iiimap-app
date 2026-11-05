@@ -166,6 +166,8 @@ function checkpoint() {
 
 let pendingEdit: string | null = null;
 let pendingMove: string | null = null;
+let modeBeforeTv: Mode = 'edit';
+let tabBeforeTv: RibbonTab = 'view';
 
 // ================= คลิปบอร์ด (Copy / Cut / Paste) =================
 let clipboard: Asset | null = null;
@@ -373,6 +375,8 @@ export const actions = {
 
   /** เข้าโหมดจอ TV: ดูผังอย่างเดียว ซ่อนเครื่องมือทั้งหมด */
   enterTv() {
+    modeBeforeTv = app.mode; // จำโหมดเดิมไว้ ออกจาก TV แล้วกลับมาเหมือนเดิม
+    tabBeforeTv = app.ribbonTab;
     app.mode = 'view';
     app.placing = null;
     app.lineAddMode = null;
@@ -387,6 +391,8 @@ export const actions = {
 
   exitTv() {
     app.tvMode = false;
+    app.mode = modeBeforeTv;
+    app.ribbonTab = tabBeforeTv;
     if (document.fullscreenElement) document.exitFullscreen?.().catch(() => {});
   },
 

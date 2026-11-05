@@ -15,7 +15,7 @@
   // ออกจากเต็มจอด้วยปุ่มของเบราว์เซอร์ = ออกจากโหมด TV ด้วย
   $effect(() => {
     const onFs = () => {
-      if (!document.fullscreenElement && app.tvMode) app.tvMode = false;
+      if (!document.fullscreenElement && app.tvMode) actions.exitTv();
     };
     document.addEventListener('fullscreenchange', onFs);
     return () => document.removeEventListener('fullscreenchange', onFs);
