@@ -41,6 +41,8 @@ export const app = $state({
   placeRot: 0,
   zoom: 1,
   showGrid: true,
+  showAllNames: false, // แสดงชื่อเครื่องทุกตัวบนผัง
+  siteSettingsOpen: false, // หน้าต่างตั้งค่าผัง
   frameLines: [] as string[], // ไลน์ที่แสดงกรอบ (และชื่อเครื่องในไลน์)
   recent: loadRecent(), // โมเดลที่ใช้ล่าสุด (สูงสุด 6)
   ribbonTab: 'insert' as RibbonTab,
@@ -111,6 +113,9 @@ export const history = $state({ past: [] as string[], future: [] as string[] });
 
 const snapshot = () =>
   JSON.stringify({
+    name: app.site.name,
+    width: app.site.width,
+    depth: app.site.depth,
     assets: app.site.assets,
     lines: app.site.lines,
     andonStates: app.site.andonStates,
@@ -120,6 +125,9 @@ const snapshot = () =>
 
 function restore(json: string) {
   const s = JSON.parse(json);
+  app.site.name = s.name;
+  app.site.width = s.width;
+  app.site.depth = s.depth;
   app.site.assets = s.assets;
   app.site.lines = s.lines;
   app.site.andonStates = s.andonStates;
@@ -229,6 +237,19 @@ function besideOf(a: Box) {
     { x: a.x, z: a.z + fd },
     { x: a.x, z: a.z - fd }
   ];
+}
+
+// ================= ขนาดผัง =================
+export const SITE_MIN = 10;
+export const SITE_MAX = 500; // เพดานทางเทคนิค (ไม่เกี่ยวกับราคา)
+
+/** เครื่องที่จะหลุดขอบ ถ้าเปลี่ยนผังเป็นขนาด width × depth (ผังขยายจากกึ่งกลาง) */
+export function assetsOutside(width: number, depth: number): Asset[] {
+  const EPS = 1e-6;
+  return app.site.assets.filter((a) => {
+    const [fw, fd] = footprint(a.w, a.d, a.rot);
+    return Math.abs(a.x) + fw / 2 > width / 2 + EPS || Math.abs(a.z) + fd / 2 > depth / 2 + EPS;
+  });
 }
 
 // ================= แจ้งเตือนสั้นๆ (toast) =================
@@ -700,6 +721,23 @@ export const actions = {
   },
 
   // ---------- ผัง ----------
+  /** ตั้งชื่อและขนาดผัง: คืนข้อความปัญหา หรือ '' ถ้าสำเร็จ */
+  setSiteSettings(name: string, width: number, depth: number): string {
+    const n = name.trim();
+    if (!n) return 'กรุณาตั้งชื่อผัง';
+    if (!Number.isInteger(width) || !Number.isInteger(depth)) return 'ขนาดผังต้องเป็นจำนวนเต็ม (เมตร)';
+    if (width < SITE_MIN || depth < SITE_MIN || width > SITE_MAX || depth > SITE_MAX)
+      return `ขนาดผังต้องอยู่ระหว่าง ${SITE_MIN}–${SITE_MAX} ม.`;
+    const out = assetsOutside(width, depth);
+    if (out.length) return `เครื่อง ${out.length} ตัวจะหลุดขอบผัง (${out.slice(0, 3).map((a) => a.name).join(', ')}${out.length > 3 ? ' …' : ''}) ย้ายเข้ามาก่อน หรือขยายผังให้ใหญ่ขึ้น`;
+    if (n === app.site.name && width === app.site.width && depth === app.site.depth) return '';
+    checkpoint();
+    app.site.name = n;
+    app.site.width = width;
+    app.site.depth = depth;
+    return '';
+  },
+
   loadSite(site: Site) {
     replaceSite(site);
   },

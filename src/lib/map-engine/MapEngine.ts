@@ -49,6 +49,8 @@ export class MapEngine {
   private assetData = new Map<string, Asset>();
   private assetColor = new Map<string, string>();
   private siteSize = { w: 60, d: 40 };
+  private sun!: THREE.DirectionalLight;
+  private minZoom = MIN_ZOOM;
   private grids: THREE.LineSegments[] = [];
   private gridVisible = true;
 
@@ -106,6 +108,7 @@ export class MapEngine {
     const sc = sun.shadow.camera;
     sc.left = -60; sc.right = 60; sc.top = 60; sc.bottom = -60;
     sc.updateProjectionMatrix();
+    this.sun = sun;
     this.scene.add(sun);
     this.scene.add(this.siteGroup, this.assetGroup);
     this.scene.add(this.frameGroup);
@@ -131,6 +134,18 @@ export class MapEngine {
   loadSite(site: Site) {
     this.siteGroup.clear();
     this.siteSize = { w: site.width, d: site.depth };
+
+    // เงาและการซูมออกต้องครอบคลุมทั้งผัง (ผังใหญ่ได้ถึง 500 ม.)
+    const half = Math.max(site.width, site.depth) / 2 + 5;
+    const sc = this.sun.shadow.camera;
+    sc.left = -half; sc.right = half; sc.top = half; sc.bottom = -half;
+    sc.near = 0.5; sc.far = half * 4;
+    this.sun.position.set(half * 0.7, half * 1.4, half * 0.5);
+    sc.updateProjectionMatrix();
+    this.sun.shadow.mapSize.set(half > 120 ? 4096 : 2048, half > 120 ? 4096 : 2048);
+    this.sun.shadow.map?.dispose();
+    this.sun.shadow.map = null; // ให้สร้าง shadow map ใหม่ตามขนาดใหม่
+    this.minZoom = Math.min(MIN_ZOOM, VIEW_SIZE / (Math.max(site.width, site.depth) * 0.75));
 
     const floor = new THREE.Mesh(
       new THREE.BoxGeometry(site.width, 0.3, site.depth),
@@ -483,7 +498,7 @@ export class MapEngine {
   }
 
   private setZoom(z: number) {
-    this.zoom = THREE.MathUtils.clamp(z, MIN_ZOOM, MAX_ZOOM);
+    this.zoom = THREE.MathUtils.clamp(z, this.minZoom, MAX_ZOOM);
     this.updateProjection();
     this.events.onZoom?.(this.zoom);
   }

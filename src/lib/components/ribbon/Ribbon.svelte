@@ -16,7 +16,7 @@
 
   let { engine }: { engine?: MapEngine } = $props();
 
-  const VERSION = 'v0.22';
+  const VERSION = 'v0.23';
   const SAVE_TEXT = { saved: 'บันทึกแล้ว', saving: 'กำลังบันทึก…', error: 'บันทึกไม่สำเร็จ' };
 
   const TABS = [
@@ -102,7 +102,7 @@
   <div class="titlebar">
     <div class="brand"><span class="logo">iii</span>Map</div>
     <span class="divider"></span>
-    <span class="doc">{app.site.name}</span>
+    <button class="doc" title="ตั้งค่าผัง (ชื่อ, ขนาด)" onclick={() => (app.siteSettingsOpen = true)}>{app.site.name}</button>
     <span class="save {app.saveState}">{SAVE_TEXT[app.saveState]}</span>
     <span class="spacer"></span>
     <span class="ver">{VERSION}</span>
@@ -277,6 +277,7 @@
       </RGroup>
       <RGroup label="แสดง">
         <RButton size="large" icon="grid" label="เส้นกริด" active={app.showGrid} onclick={() => (app.showGrid = !app.showGrid)} />
+        <RButton size="large" icon="label" label="ชื่อทั้งหมด" title="แสดงชื่อเครื่องทุกตัวบนผัง" active={app.showAllNames} onclick={() => (app.showAllNames = !app.showAllNames)} />
         <button class="ddbtn dd-trigger" class:active={app.frameLines.length > 0} onclick={(e) => openDd(e, 'frames')}>
           <Icon name="zone" size={26} />
           <span>กรอบไลน์ ▾</span>
@@ -329,7 +330,8 @@
   .brand { font-weight: 700; font-size: 16px; color: #0f172a; }
   .logo { color: #2563eb; }
   .divider { width: 1px; height: 18px; background: #e2e8f0; }
-  .doc { font-size: 13px; color: #0f172a; font-weight: 500; }
+  .doc { font: 500 13px system-ui, sans-serif; color: #0f172a; border: 1px solid transparent; background: transparent; border-radius: 6px; padding: 3px 8px; cursor: pointer; }
+  .doc:hover { border-color: #e2e8f0; background: #fff; }
   .save { font-size: 12px; color: #94a3b8; }
   .save.saved::before { content: '✓ '; color: #16a34a; }
   .save.error { color: #dc2626; }

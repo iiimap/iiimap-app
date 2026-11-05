@@ -46,6 +46,8 @@
   </button>
   {#if open}
     <div class="menu" role="menu">
+      <button role="menuitem" onclick={() => { open = false; app.siteSettingsOpen = true; }}>⚙ ตั้งค่าผัง (ชื่อ, ขนาด)…</button>
+      <hr />
       <button role="menuitem" onclick={onExport}>⬇ Export ผัง (.json)</button>
       <button role="menuitem" onclick={onImportClick}>⬆ Import ผัง…</button>
       <hr />

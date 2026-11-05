@@ -10,6 +10,7 @@
   import AndonPanel from '../lib/components/panels/AndonPanel.svelte';
   import KpiPanel from '../lib/components/panels/KpiPanel.svelte';
   import Toast from '../lib/components/Toast.svelte';
+  import SiteSettings from '../lib/components/SiteSettings.svelte';
   import type { MapEngine } from '../lib/map-engine/MapEngine';
   import { app, actions } from '../lib/stores/site.svelte';
 
@@ -20,7 +21,8 @@
   function onKey(e: KeyboardEvent) {
     const t = e.target as HTMLElement;
     // ในช่องพิมพ์: Enter = เสร็จสิ้นการแก้ไข (ออกจากช่อง → บันทึกค่าและลงประวัติย้อนกลับ)
-    if (t instanceof HTMLInputElement && t.type !== 'checkbox' && (e.code === 'Enter' || e.code === 'NumpadEnter')) {
+    // (ช่องในฟอร์ม เช่น ตั้งค่าผัง: ปล่อยให้ Enter = กดบันทึกของฟอร์มนั้น)
+    if (t instanceof HTMLInputElement && t.type !== 'checkbox' && !t.form && (e.code === 'Enter' || e.code === 'NumpadEnter')) {
       e.preventDefault();
       t.blur();
       return;
@@ -96,6 +98,7 @@
   <StatusBar {engine} />
 </main>
 
+<SiteSettings />
 <ConfirmModal />
 
 <style>

@@ -11,7 +11,7 @@
       ...new Set([
         app.selectedId,
         app.hoverId,
-        ...app.site.assets.filter((a) => a.lineId && app.frameLines.includes(a.lineId)).map((a) => a.id)
+        ...app.site.assets.filter((a) => app.showAllNames || (a.lineId && app.frameLines.includes(a.lineId))).map((a) => a.id)
       ])
     ].filter((x): x is string => !!x)
   );
