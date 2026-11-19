@@ -3,12 +3,14 @@ import { MODELS } from '../domain/catalog';
 import { DEFAULT_ANDON_STATES, DEFAULT_KPIS, DEFAULT_REASONS, INCIDENT_LIMIT, LINE_COLORS, SEVERITY_MAX, clampSeverity } from '../domain/defaults';
 import type { KpiPeriod } from '../domain/kpi';
 import { footprint, snapAxis } from '../domain/geometry';
-import type { AndonState, Asset, AssetKind, Incident, Kpi, LineMode, Site } from '../domain/types';
+import type { AndonState, Asset, AssetKind, AuditModule, AuditRecord, Incident, Kpi, LineMode, Site } from '../domain/types';
+import { auditSummary, AUDIT_STATUS_COLOR } from '../domain/audit';
+import { DEFAULT_AUDIT_CONFIG } from '../domain/defaults';
 import { loadLocal, saveLocal } from './persist';
 import { checkFormula } from '../domain/formula';
 
 export type Mode = 'view' | 'edit';
-export type RibbonTab = 'home' | 'insert' | 'line' | 'andon' | 'kpi' | 'view';
+export type RibbonTab = 'home' | 'insert' | 'line' | 'andon' | 'kpi' | 'fiveS' | 'fire' | 'view';
 
 /** ฟอร์มแก้ไข KPI: แก้ในฟอร์มก่อน กดบันทึกแล้วค่อยเปลี่ยนค่าจริง */
 export interface KpiForm {
@@ -57,6 +59,9 @@ export const app = $state({
   kpiForm: null as KpiForm | null, // กล่องตั้งค่า KPI ที่เปิดอยู่ (แก้แล้วต้องกดบันทึก)
   kpiError: '',
   toast: '', // ข้อความแจ้งเตือนสั้นๆ ด้านล่างผัง
+  auditForm: null as { module: AuditModule; targetId: string } | null, // หน้าต่างบันทึกการตรวจ
+  focus: null as { x: number; z: number; seq: number } | null, // คำขอให้กล้องพาไปที่จุดนี้
+  fiveSLineId: null as string | null, // ไลน์ที่เลือกดูในแท็บ 5ส
   saveState: 'saved' as 'saved' | 'saving' | 'error'
 });
 
@@ -89,8 +94,13 @@ function clearDraft() {
 }
 
 // ================= นาฬิกา (ใช้แสดงเวลาที่ผ่านไปของเรื่อง Andon) =================
-export const clock = $state({ now: Date.now() });
-setInterval(() => (clock.now = Date.now()), 1000);
+// now = ทุกวินาที (เวลานับ Andon) / minute = ทุกนาที (สถานะการตรวจ ไม่ต้องคำนวณทุกวินาที)
+export const clock = $state({ now: Date.now(), minute: Math.floor(Date.now() / 60000) * 60000 });
+setInterval(() => {
+  clock.now = Date.now();
+  const m = Math.floor(clock.now / 60000) * 60000;
+  if (m !== clock.minute) clock.minute = m;
+}, 1000);
 
 // ================= บันทึกอัตโนมัติ =================
 // แก้ผังเมื่อไหร่ รอ 0.5 วินาทีหลังแก้ครั้งสุดท้ายแล้วค่อยบันทึก
@@ -126,7 +136,8 @@ const snapshot = () =>
     andonStates: app.site.andonStates,
     metrics: app.site.metrics,
     kpis: app.site.kpis,
-    reasons: app.site.reasons
+    reasons: app.site.reasons,
+    auditConfig: app.site.auditConfig
   });
 
 function restore(json: string) {
@@ -140,6 +151,7 @@ function restore(json: string) {
   app.site.metrics = s.metrics;
   app.site.kpis = s.kpis;
   app.site.reasons = s.reasons;
+  app.site.auditConfig = s.auditConfig;
   // ประวัติ Andon ไม่ถูกย้อนกลับ (เป็นบันทึกเหตุการณ์จริง) → ใส่สถานะของเรื่องที่ยังเปิดอยู่กลับให้เครื่อง
   for (const i of app.site.incidents) {
     if (i.resolvedAt !== null) continue;
@@ -299,6 +311,7 @@ function replaceSite(site: Site) {
   app.frameLines = [];
   app.kpiForm = null;
   app.kpiScope = 'site';
+  app.auditForm = null;
   clearDraft();
   history.past = [];
   history.future = [];
@@ -325,6 +338,33 @@ export function kpiProblem(k: Kpi): string {
   if (!name) return 'กรุณาตั้งชื่อ KPI';
   if (app.site.kpis.some((x) => x.id !== k.id && x.name.trim() === name)) return `มี KPI ชื่อ "${name}" อยู่แล้ว`;
   return checkFormula(k.formula) ?? '';
+}
+
+// ================= สีสถานะบนผัง (Andon + การตรวจถังดับเพลิง) =================
+export function statusColors(site: Site, now: number): Record<string, string> {
+  const out = andonColors(site);
+  for (const a of site.assets) {
+    if (a.kind !== 'extinguisher') continue;
+    out[a.id] = AUDIT_STATUS_COLOR[auditSummary(site, 'fire', a.id, now).status];
+  }
+  return out;
+}
+
+let focusSeq = 0;
+/** ให้กล้องพาไปที่เครื่อง และเลือกเครื่องนั้น */
+export function focusAsset(id: string) {
+  const a = app.site.assets.find((x) => x.id === id);
+  if (!a) return;
+  app.selectedId = id;
+  app.focus = { x: a.x, z: a.z, seq: ++focusSeq };
+}
+/** ให้กล้องพาไปที่กลางไลน์ */
+export function focusLine(id: string) {
+  const m = app.site.assets.filter((a) => a.lineId === id);
+  if (!m.length) return;
+  const xs = m.map((a) => a.x);
+  const zs = m.map((a) => a.z);
+  app.focus = { x: (Math.min(...xs) + Math.max(...xs)) / 2, z: (Math.min(...zs) + Math.max(...zs)) / 2, seq: ++focusSeq };
 }
 
 // ================= สี Andon ที่แสดงจริงบนผัง =================
@@ -401,7 +441,7 @@ export const actions = {
     if (tab !== 'line') app.lineAddMode = null;
     // ออกจากแท็บ Line = ปิดกล่องตั้งค่าไลน์ (ยกเว้นไลน์ใหม่ที่ยังไม่บันทึก)
     if (tab !== 'line' && app.activeLineId !== app.draftLineId) app.activeLineId = null;
-    if (tab !== 'insert') app.placing = null;
+    if (tab !== 'insert' && !(tab === 'fire' && app.placing === 'extinguisher')) app.placing = null;
   },
 
   startPlacing(kind: AssetKind | null) {
@@ -594,6 +634,50 @@ export const actions = {
     const off = app.site.andonStates.find((s) => s.system === 'offline');
     if (!a || !off || activeIncident(assetId)) return;
     a.status = on ? off.id : defaultStatus();
+  },
+
+  // ---------- การตรวจ (Audit) ----------
+  // บันทึกการตรวจเป็นประวัติจริง ไม่ย้อนด้วย Ctrl+Z (ลบได้จากประวัติ พร้อมถามย้ำ)
+  addAudit(rec: Omit<AuditRecord, 'id'>) {
+    app.site.audits.push({ ...rec, id: newId('aud') });
+  },
+
+  deleteAudit(id: string) {
+    app.site.audits = app.site.audits.filter((a) => a.id !== id);
+  },
+
+  openAuditForm(module: AuditModule, targetId: string) {
+    app.auditForm = { module, targetId };
+  },
+
+  setAuditNumber(module: AuditModule, key: 'intervalDays' | 'dueSoonDays' | 'passScore', value: number) {
+    if (!Number.isFinite(value)) return;
+    const cfg = app.site.auditConfig[module] as Record<string, unknown>;
+    const v = key === 'passScore' ? Math.min(100, Math.max(0, Math.round(value))) : Math.max(key === 'intervalDays' ? 1 : 0, Math.round(value));
+    if (cfg[key] === v || !(key in cfg)) return;
+    checkpoint();
+    cfg[key] = v;
+  },
+
+  addAuditItem(module: AuditModule) {
+    checkpoint();
+    const list = module === 'fire' ? app.site.auditConfig.fire.checklist : app.site.auditConfig.fiveS.categories;
+    let n = 1;
+    while (list.includes(`หัวข้อใหม่ ${n}`)) n++;
+    list.push(`หัวข้อใหม่ ${n}`);
+  },
+
+  removeAuditItem(module: AuditModule, index: number) {
+    const list = module === 'fire' ? app.site.auditConfig.fire.checklist : app.site.auditConfig.fiveS.categories;
+    if (list.length <= 1 || index < 0 || index >= list.length) return;
+    checkpoint();
+    list.splice(index, 1);
+  },
+
+  resetAuditConfig(module: AuditModule) {
+    checkpoint();
+    if (module === 'fire') app.site.auditConfig.fire = structuredClone(DEFAULT_AUDIT_CONFIG.fire);
+    else app.site.auditConfig.fiveS = structuredClone(DEFAULT_AUDIT_CONFIG.fiveS);
   },
 
   // ---------- สาเหตุ (reason codes) ----------

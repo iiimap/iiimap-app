@@ -2,8 +2,9 @@
   import { onMount } from 'svelte';
   import { MapEngine } from '../map-engine/MapEngine';
   import { footprint } from '../domain/geometry';
-  import { app, actions, andonColors } from '../stores/site.svelte';
+  import { app, actions, statusColors, clock } from '../stores/site.svelte';
   import { guarded } from '../stores/guarded';
+  import { auditSummary, fiveSColor } from '../domain/audit';
 
   let { engine = $bindable() }: { engine?: MapEngine } = $props();
   let container: HTMLDivElement;
@@ -33,14 +34,14 @@
     const { width, depth, id } = app.site;
     engine?.loadSite({
       width, depth, id, name: '', tenantId: '',
-      lines: [], andonStates: [], metrics: { failureStates: [] }, kpis: [], reasons: [], incidents: [], assets: []
+      lines: [], andonStates: [], metrics: { failureStates: [] }, kpis: [], reasons: [], incidents: [], audits: [], auditConfig: undefined as never, assets: []
     });
   });
 
   // ส่งข้อมูลจาก store เข้า map engine ทุกครั้งที่เปลี่ยน
   $effect(() => {
     const site = $state.snapshot(app.site);
-    engine?.syncAssets(site.assets, andonColors(site));
+    engine?.syncAssets(site.assets, statusColors(site, clock.minute));
   });
   $effect(() => {
     engine?.setSelected(app.lineAddMode ? null : app.selectedId);
@@ -56,6 +57,12 @@
     engine?.setGridVisible(app.showGrid);
   });
 
+  // คำขอให้กล้องพาไปที่จุด (จากแผงรายการ เช่น ถังดับเพลิง / 5ส)
+  $effect(() => {
+    const f = app.focus;
+    if (f) engine?.flyTo(f.x, f.z, 160);
+  });
+
   // ไฟกะพริบ = เรื่อง Andon ที่ยังรอรับเรื่อง
   $effect(() => {
     const ids = app.site.incidents.filter((i) => i.resolvedAt === null && i.ackAt === null).map((i) => i.assetId);
@@ -64,16 +71,25 @@
 
   // ไฮไลต์สมาชิกของไลน์ที่กำลังดู (รวมไลน์ที่เพิ่งสร้าง)
   $effect(() => {
-    const line = app.site.lines.find((l) => l.id === app.activeLineId);
+    const lid = app.ribbonTab === 'fiveS' ? app.fiveSLineId : app.activeLineId;
+    const line = app.site.lines.find((l) => l.id === lid);
     const ids = line ? app.site.assets.filter((a) => a.lineId === line.id).map((a) => a.id) : [];
     engine?.setHighlighted(ids, line?.color ?? '#7c3aed');
   });
 
   // กรอบไลน์อัตโนมัติ: ล้อมสมาชิกทุกตัว + เผื่อขอบ 0.5 ม.
   $effect(() => {
+    // แท็บ 5ส: กรอบทุกไลน์เป็นสีตามคะแนน 5ส ล่าสุด
+    const fiveS = app.ribbonTab === 'fiveS';
     const groups = app.site.lines
-      .filter((l) => app.frameLines.includes(l.id) || l.id === app.activeLineId)
-      .map((l) => ({ color: l.color, strong: l.id === app.activeLineId, members: app.site.assets.filter((a) => a.lineId === l.id) }));
+      .filter((l) => fiveS || app.frameLines.includes(l.id) || l.id === app.activeLineId)
+      .map((l) => ({
+        color: fiveS
+          ? fiveSColor(auditSummary(app.site, 'fiveS', l.id, clock.minute).last?.score ?? null, app.site.auditConfig.fiveS.passScore)
+          : l.color,
+        strong: fiveS ? l.id === app.fiveSLineId : l.id === app.activeLineId,
+        members: app.site.assets.filter((a) => a.lineId === l.id)
+      }));
     const frames = groups
       .map(({ color, strong, members }) => {
         if (!members.length) return null;

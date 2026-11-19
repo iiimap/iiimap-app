@@ -1,10 +1,10 @@
 // แปลงผังเป็นไฟล์ / อ่านผังจากไฟล์ (ใช้ทั้งบันทึกอัตโนมัติ และ Export / Import)
-import type { AndonState, Asset, Incident, Kpi, Line, MetricsConfig, Site } from './types';
-import { DEFAULT_ANDON_STATES, DEFAULT_KPIS, DEFAULT_METRICS, DEFAULT_REASONS, INCIDENT_LIMIT, OFFLINE_STATE, clampSeverity } from './defaults';
+import type { AndonState, Asset, AuditConfig, AuditRecord, Incident, Kpi, Line, MetricsConfig, Site } from './types';
+import { DEFAULT_ANDON_STATES, DEFAULT_AUDIT_CONFIG, DEFAULT_KPIS, DEFAULT_METRICS, DEFAULT_REASONS, INCIDENT_LIMIT, OFFLINE_STATE, clampSeverity } from './defaults';
 import { MODELS } from './catalog';
 
 export const FILE_FORMAT = 'iiimap-site';
-export const FILE_VERSION = 4;
+export const FILE_VERSION = 5;
 
 export interface SiteFile {
   format: typeof FILE_FORMAT;
@@ -92,6 +92,45 @@ function readIncidents(v: unknown): Incident[] {
     .slice(-INCIDENT_LIMIT);
 }
 
+const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
+
+function readAudits(v: unknown): AuditRecord[] {
+  if (!Array.isArray(v)) return [];
+  return v
+    .filter((a) => a && isStr(a.id) && (a.module === 'fire' || a.module === 'fiveS') && isStr(a.targetId) && isNum(a.at))
+    .map((a) => ({
+      id: a.id,
+      module: a.module,
+      targetId: a.targetId,
+      at: a.at,
+      inspector: isStr(a.inspector) ? a.inspector : '',
+      checks: isObj(a.checks) ? Object.fromEntries(Object.entries(a.checks).filter(([, x]) => typeof x === 'boolean')) as Record<string, boolean> : {},
+      scores: isObj(a.scores) ? Object.fromEntries(Object.entries(a.scores).filter(([, x]) => isNum(x))) as Record<string, number> : {},
+      passed: a.passed === true,
+      score: isNum(a.score) ? a.score : null,
+      note: isStr(a.note) ? a.note : ''
+    }));
+}
+
+function readAuditConfig(v: any): AuditConfig {
+  const d = DEFAULT_AUDIT_CONFIG;
+  const pos = (x: unknown, def: number) => (isNum(x) && x > 0 ? Math.round(x) : def);
+  const list = (x: unknown, def: string[]) => (Array.isArray(x) && x.every(isStr) && x.length ? [...x] : [...def]);
+  return {
+    fire: {
+      intervalDays: pos(v?.fire?.intervalDays, d.fire.intervalDays),
+      dueSoonDays: isNum(v?.fire?.dueSoonDays) && v.fire.dueSoonDays >= 0 ? Math.round(v.fire.dueSoonDays) : d.fire.dueSoonDays,
+      checklist: list(v?.fire?.checklist, d.fire.checklist)
+    },
+    fiveS: {
+      intervalDays: pos(v?.fiveS?.intervalDays, d.fiveS.intervalDays),
+      dueSoonDays: isNum(v?.fiveS?.dueSoonDays) && v.fiveS.dueSoonDays >= 0 ? Math.round(v.fiveS.dueSoonDays) : d.fiveS.dueSoonDays,
+      categories: list(v?.fiveS?.categories, d.fiveS.categories),
+      passScore: isNum(v?.fiveS?.passScore) ? Math.min(100, Math.max(0, v.fiveS.passScore)) : d.fiveS.passScore
+    }
+  };
+}
+
 /** ตรวจและอ่านไฟล์ผัง (รองรับไฟล์เวอร์ชันเก่า) คืน null ถ้าไฟล์ไม่ถูกต้อง */
 export function fromFile(data: unknown): Site | null {
   const f = data as SiteFile;
@@ -133,6 +172,8 @@ export function fromFile(data: unknown): Site | null {
     kpis: readKpis(s.kpis, s.metrics),
     reasons: Array.isArray(s.reasons) ? s.reasons.filter(isStr) : [...DEFAULT_REASONS],
     incidents: readIncidents(s.incidents),
+    audits: readAudits(s.audits),
+    auditConfig: readAuditConfig(s.auditConfig),
     assets
   };
 }

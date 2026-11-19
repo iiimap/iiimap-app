@@ -2,7 +2,7 @@
   // ป้ายชื่อโมเดล: แสดงเฉพาะตัวที่เมาส์ชี้ ตัวที่เลือกอยู่ และเครื่องในไลน์ที่เปิดกรอบไว้
   // เป็น HTML ซ้อนบน canvas จึงคมชัดทุกระดับซูม และพิมพ์ภาษาไทยได้สวย
   import type { MapEngine } from '../map-engine/MapEngine';
-  import { app, andonColors } from '../stores/site.svelte';
+  import { app, statusColors, clock } from '../stores/site.svelte';
 
   let { engine }: { engine?: MapEngine } = $props();
 
@@ -12,6 +12,8 @@
         app.selectedId,
         app.hoverId,
         ...app.site.assets.filter((a) => app.showAllNames || (a.lineId && app.frameLines.includes(a.lineId))).map((a) => a.id),
+        // แท็บถังดับเพลิง: แสดงชื่อถังทุกถัง
+        ...(app.ribbonTab === 'fire' && !app.tvMode ? app.site.assets.filter((a) => a.kind === 'extinguisher').map((a) => a.id) : []),
         // โหมด TV: เครื่องที่มีเรื่อง Andon เปิดอยู่ แสดงชื่อเสมอ
         ...(app.tvMode ? app.site.incidents.filter((i) => i.resolvedAt === null).map((i) => i.assetId) : [])
       ])
@@ -20,7 +22,7 @@
   let labels = $derived(
     ids.map((id) => app.site.assets.find((a) => a.id === id)).filter((a) => !!a)
   );
-  let colors = $derived(andonColors(app.site));
+  let colors = $derived(statusColors(app.site, clock.minute));
   const stateName = (id: string) => app.site.andonStates.find((s) => s.id === id)?.name ?? '';
   const lineName = (id: string | null) => app.site.lines.find((l) => l.id === id)?.name;
   let pos = $state<Record<string, { x: number; y: number }>>({});
@@ -48,7 +50,7 @@
   {@const p = pos[a!.id]}
   {#if p}
     <div class="label" class:selected={a!.id === app.selectedId} style="left:{p.x}px; top:{p.y}px">
-      {#if a!.andon}<span class="dot" style="background:{colors[a!.id]}" title={stateName(a!.status)}></span>{/if}
+      {#if a!.andon || a!.kind === 'extinguisher'}<span class="dot" style="background:{colors[a!.id]}" title={stateName(a!.status)}></span>{/if}
       {a!.name}
       {#if lineName(a!.lineId)}<small>{lineName(a!.lineId)}</small>{/if}
     </div>

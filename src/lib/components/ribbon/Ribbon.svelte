@@ -12,11 +12,12 @@
   import Dropdown from './Dropdown.svelte';
   import { guarded } from '../../stores/guarded';
   import { PERIODS, computeKpis, fmtNum } from '../../domain/kpi';
+  import { auditSummary, AUDIT_STATUS_COLOR, AUDIT_STATUS_LABEL, fiveSColor, type AuditStatus } from '../../domain/audit';
   import type { CategoryId } from '../../domain/catalog';
 
   let { engine }: { engine?: MapEngine } = $props();
 
-  const VERSION = 'v0.32';
+  const VERSION = 'v0.33';
   const SAVE_TEXT = { saved: 'บันทึกแล้ว', saving: 'กำลังบันทึก…', error: 'บันทึกไม่สำเร็จ' };
 
   const TABS = [
@@ -25,6 +26,8 @@
     { id: 'line', label: 'Line', edit: false },
     { id: 'andon', label: 'Andon', edit: false },
     { id: 'kpi', label: 'KPIs', edit: false },
+    { id: 'fiveS', label: '5ส', edit: false },
+    { id: 'fire', label: 'ถังดับเพลิง', edit: false },
     { id: 'view', label: 'มุมมอง', edit: false }
   ] as const;
 
@@ -78,6 +81,22 @@
 
   let kpiResult = $derived(computeKpis(app.site, app.kpiScope, app.kpiPeriod, clock.now));
   let openIncidents = $derived(app.site.incidents.filter((i) => i.resolvedAt === null));
+
+  // ---------- สรุปการตรวจ (5ส / ถังดับเพลิง) ----------
+  const STATUS_ORDER: AuditStatus[] = ['overdue', 'failed', 'never', 'soon', 'ok'];
+  let fireSum = $derived(
+    app.site.assets.filter((a) => a.kind === 'extinguisher').map((a) => auditSummary(app.site, 'fire', a.id, clock.minute))
+  );
+  let fiveSum = $derived(
+    app.site.lines.filter((l) => l.id !== app.draftLineId).map((l) => auditSummary(app.site, 'fiveS', l.id, clock.minute))
+  );
+  const countBy = (list: { status: AuditStatus }[]) =>
+    STATUS_ORDER.map((st) => ({ st, n: list.filter((x) => x.status === st).length })).filter((x) => x.n > 0);
+  let fiveAvg = $derived.by(() => {
+    const sc = fiveSum.filter((x) => x.last?.score != null).map((x) => x.last!.score as number);
+    return sc.length ? Math.round((sc.reduce((a, b) => a + b, 0) / sc.length) * 10) / 10 : null;
+  });
+  let selectedExt = $derived(app.site.assets.find((a) => a.id === app.selectedId && a.kind === 'extinguisher'));
 
   let thumbs = $state<Record<string, string>>({});
   onMount(() => {
@@ -270,6 +289,44 @@
           </div>
         {/if}
       </RGroup>
+    {:else if app.ribbonTab === 'fiveS'}
+      <RGroup label="ตรวจ 5ส">
+        <RButton size="large" icon="check" label="ตรวจไลน์นี้" title="เลือกไลน์ในแผงซ้ายก่อน" disabled={!app.fiveSLineId}
+          onclick={() => app.fiveSLineId && actions.openAuditForm('fiveS', app.fiveSLineId)} />
+      </RGroup>
+      <RGroup label="คะแนนเฉลี่ยล่าสุด">
+        <div class="bigstat" style="--c:{fiveSColor(fiveAvg, app.site.auditConfig.fiveS.passScore)}">
+          <b>{fiveAvg === null ? '–' : `${fiveAvg}%`}</b><small>{fiveSum.length} ไลน์</small>
+        </div>
+      </RGroup>
+      <RGroup label="สถานะการตรวจรายไลน์">
+        <div class="legend">
+          {#each countBy(fiveSum) as c (c.st)}
+            <span><i style="background:{AUDIT_STATUS_COLOR[c.st]}"></i>{AUDIT_STATUS_LABEL[c.st]}<b>{c.n}</b></span>
+          {:else}
+            <span class="none">ยังไม่มีไลน์</span>
+          {/each}
+        </div>
+      </RGroup>
+    {:else if app.ribbonTab === 'fire'}
+      <RGroup label="ถังดับเพลิง">
+        <RButton size="large" icon="paste" label="วางถัง" title="วางถังดับเพลิงบนผัง" disabled={!editing} active={app.placing === 'extinguisher'}
+          onclick={() => actions.startPlacing('extinguisher')} />
+        <RButton size="large" icon="check" label="บันทึกการตรวจ" title="เลือกถังบนผังหรือในแผงซ้ายก่อน" disabled={!selectedExt}
+          onclick={() => selectedExt && actions.openAuditForm('fire', selectedExt.id)} />
+      </RGroup>
+      <RGroup label="ทั้งหมด">
+        <div class="bigstat"><b>{fireSum.length}</b><small>ถัง</small></div>
+      </RGroup>
+      <RGroup label="สถานะการตรวจ">
+        <div class="legend">
+          {#each countBy(fireSum) as c (c.st)}
+            <span><i style="background:{AUDIT_STATUS_COLOR[c.st]}"></i>{AUDIT_STATUS_LABEL[c.st]}<b>{c.n}</b></span>
+          {:else}
+            <span class="none">ยังไม่มีถังดับเพลิง</span>
+          {/each}
+        </div>
+      </RGroup>
     {:else}
       <RGroup label="หมุนผัง">
         <RButton size="large" icon="rotateCcw" label="ทวนเข็ม" onclick={() => engine?.rotate(-1)} />
@@ -377,6 +434,9 @@
   }
   .chip:hover:not(:disabled) { background: #f8fafc; border-color: var(--c); }
   .chip.on { background: color-mix(in srgb, var(--c) 14%, white); border-color: var(--c); font-weight: 600; }
+  .bigstat { display: flex; flex-direction: column; align-items: center; justify-content: center; min-width: 84px; padding: 0 8px; }
+  .bigstat b { font-size: 26px; line-height: 1.1; color: var(--c, #0f172a); font-variant-numeric: tabular-nums; }
+  .bigstat small { font-size: 11px; color: #64748b; }
   .incsum { display: flex; flex-direction: column; align-items: center; justify-content: center; min-width: 76px; padding: 0 8px; }
   .incsum b { font-size: 26px; line-height: 1.1; color: #0f172a; font-variant-numeric: tabular-nums; }
   .incsum b.alert { color: #dc2626; }

@@ -12,6 +12,9 @@
   import Toast from '../lib/components/Toast.svelte';
   import SiteSettings from '../lib/components/SiteSettings.svelte';
   import TvOverlay from '../lib/components/TvOverlay.svelte';
+  import FirePanel from '../lib/components/audit/FirePanel.svelte';
+  import FiveSPanel from '../lib/components/audit/FiveSPanel.svelte';
+  import AuditForm from '../lib/components/audit/AuditForm.svelte';
   import type { MapEngine } from '../lib/map-engine/MapEngine';
   import { app, actions } from '../lib/stores/site.svelte';
 
@@ -99,6 +102,8 @@
       <LineConfig />
       {#if app.ribbonTab === 'andon'}<AndonPanel />{/if}
       {#if app.ribbonTab === 'kpi'}<KpiPanel />{/if}
+      {#if app.ribbonTab === 'fiveS'}<FiveSPanel />{/if}
+      {#if app.ribbonTab === 'fire'}<FirePanel />{/if}
       <Properties />
     {/if}
     <TvOverlay {engine} />
@@ -108,6 +113,7 @@
 </main>
 
 <SiteSettings />
+<AuditForm />
 <ConfirmModal />
 
 <style>

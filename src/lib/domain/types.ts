@@ -73,6 +73,32 @@ export interface Incident {
 
 export type IncidentStage = 'open' | 'ack' | 'escalated' | 'resolved';
 
+/** โมดูลที่ใช้ระบบ Audit กลาง */
+export type AuditModule = 'fire' | 'fiveS';
+
+/**
+ * บันทึกการตรวจ 1 ครั้ง (ใช้ร่วมกันทั้งถังดับเพลิงและ 5ส)
+ * - fire:  targetId = id ของถังดับเพลิง, checks = ผ่าน/ไม่ผ่าน ต่อข้อ
+ * - fiveS: targetId = id ของไลน์, scores = คะแนน 0–5 ต่อหัวข้อ
+ */
+export interface AuditRecord {
+  id: string;
+  module: AuditModule;
+  targetId: string;
+  at: number; // วันที่ตรวจ (ms)
+  inspector: string;
+  checks: Record<string, boolean>; // fire: ชื่อข้อ → ผ่านไหม
+  scores: Record<string, number>; // fiveS: ชื่อหัวข้อ → 0–5
+  passed: boolean;
+  score: number | null; // fiveS: คะแนนรวมเป็น %
+  note: string;
+}
+
+export interface AuditConfig {
+  fire: { intervalDays: number; dueSoonDays: number; checklist: string[] };
+  fiveS: { intervalDays: number; dueSoonDays: number; categories: string[]; passScore: number };
+}
+
 export interface Site {
   id: string;
   tenantId: string;
@@ -85,5 +111,7 @@ export interface Site {
   kpis: Kpi[];
   reasons: string[]; // สาเหตุ (reason code) ให้เลือกตอนปิดเรื่อง
   incidents: Incident[]; // ประวัติการแจ้ง Andon
+  audits: AuditRecord[]; // ประวัติการตรวจ (ถังดับเพลิง, 5ส)
+  auditConfig: AuditConfig;
   assets: Asset[];
 }

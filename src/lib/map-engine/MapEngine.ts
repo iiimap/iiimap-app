@@ -254,7 +254,8 @@ export class MapEngine {
         }
       }
       const color = colors[a.id] ?? '#94a3b8';
-      if (a.andon && (rebuilt || !hasAndon || this.assetColor.get(a.id) !== color)) {
+      // สีไฟสถานะ: Andon หรือสถานะการตรวจ (ถังดับเพลิงมีแผ่นสถานะในตัวโมเดล)
+      if ((a.andon || colors[a.id] !== undefined) && (rebuilt || !hasAndon || this.assetColor.get(a.id) !== color)) {
         setStatusColor(model, parseInt(color.slice(1), 16));
       }
       this.assetColor.set(a.id, color);

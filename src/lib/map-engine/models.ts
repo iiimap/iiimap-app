@@ -205,6 +205,29 @@ const builders: Record<string, (g: THREE.Group) => void> = {
     box(g, 0.42, 0.45, 0.42, M.carton, 0.22, 0.59, 0.22);
   },
 
+  extinguisher(g) {
+    // แผ่นพื้นแสดงสถานะการตรวจ (เขียว / เหลือง / แดง / เทา)
+    const ring = cyl(g, 0.46, 0.04, new THREE.MeshStandardMaterial({ color: 0x94a3b8 }), 0, 0, 0, 24);
+    ring.userData.statusLight = true;
+    cyl(g, 0.36, 0.05, M.bodyAlt, 0, 0.04, 0, 20); // ฐานวาง
+    // ตัวถัง
+    const red = new THREE.MeshStandardMaterial({ color: 0xdc2626, roughness: 0.4 });
+    const body = cyl(g, 0.16, 0.62, red, 0, 0.09, 0, 20);
+    body.userData.ownMaterial = true;
+    cyl(g, 0.16, 0.08, red, 0, 0.71, 0, 20, 0.1); // ไหล่ถัง
+    cyl(g, 0.05, 0.08, M.black, 0, 0.79, 0); // วาล์ว
+    box(g, 0.2, 0.03, 0.05, M.black, 0.06, 0.86, 0); // คันบีบ
+    const hose = new THREE.Mesh(new THREE.TorusGeometry(0.11, 0.018, 8, 16, Math.PI), M.black);
+    hose.position.set(0.12, 0.6, 0.12);
+    hose.rotation.set(0, Math.PI / 4, Math.PI / 2);
+    g.add(hose);
+    box(g, 0.07, 0.07, 0.04, M.yellow, 0, 0.45, 0.16); // ป้ายฉลาก
+    // เสาป้ายสัญลักษณ์ถังดับเพลิง
+    cyl(g, 0.025, 1.05, M.metal, -0.3, 0.04, -0.3, 8);
+    box(g, 0.34, 0.34, 0.03, red, -0.3, 1.09, -0.3);
+    box(g, 0.24, 0.05, 0.035, M.body, -0.3, 1.24, -0.3);
+  },
+
   plant(g) {
     cyl(g, 0.32, 0.5, M.bodyAlt, 0, 0, 0, 16, 0.4); // กระถาง
     cyl(g, 0.36, 0.06, M.dark, 0, 0.5, 0, 16);

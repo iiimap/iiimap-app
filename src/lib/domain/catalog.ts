@@ -4,6 +4,7 @@ export const CATEGORIES = [
   { id: 'conveyor', label: 'ลำเลียง' },
   { id: 'station', label: 'สถานีงาน' },
   { id: 'storage', label: 'คลังและโลจิสติกส์' },
+  { id: 'safety', label: 'ความปลอดภัย' },
   { id: 'decoration', label: 'ตกแต่ง' }
 ] as const;
 
@@ -43,6 +44,8 @@ export const MODELS: Record<string, ModelDef> = {
   rack: { id: 'rack', label: 'ชั้นวางพาเลท', category: 'storage', prefix: 'RK', andon: 'none', w: 4, d: 1, h: 3 },
   pallet: { id: 'pallet', label: 'พาเลทสินค้า', category: 'storage', prefix: 'PL', andon: 'none', w: 1, d: 1, h: 1.1 },
   dock: { id: 'dock', label: 'Dock ขนถ่าย', category: 'storage', prefix: 'D', andon: 'optional', w: 4, d: 4, h: 3.4 },
+
+  extinguisher: { id: 'extinguisher', label: 'ถังดับเพลิง', category: 'safety', prefix: 'FE', andon: 'none', w: 1, d: 1, h: 1.7 },
 
   plant: { id: 'plant', label: 'กระถางต้นไม้', category: 'decoration', prefix: 'PT', andon: 'none', w: 1, d: 1, h: 1.6 },
   barrier: { id: 'barrier', label: 'แผงกั้นทางเดิน', category: 'decoration', prefix: 'BR', andon: 'none', w: 3, d: 1, h: 1 }

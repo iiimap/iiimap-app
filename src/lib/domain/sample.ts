@@ -1,5 +1,5 @@
 import type { Site } from './types';
-import { DEFAULT_ANDON_STATES, DEFAULT_KPIS, DEFAULT_METRICS, DEFAULT_REASONS } from './defaults';
+import { DEFAULT_ANDON_STATES, DEFAULT_AUDIT_CONFIG, DEFAULT_KPIS, DEFAULT_METRICS, DEFAULT_REASONS } from './defaults';
 
 // ผังเปล่า ขนาด 60 x 40 เมตร
 export const emptySite: Site = {
@@ -14,5 +14,7 @@ export const emptySite: Site = {
   kpis: DEFAULT_KPIS,
   reasons: DEFAULT_REASONS,
   incidents: [],
+  audits: [],
+  auditConfig: DEFAULT_AUDIT_CONFIG,
   assets: []
 };

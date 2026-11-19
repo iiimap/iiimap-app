@@ -4,6 +4,9 @@
   import { guarded } from '../stores/guarded';
   import { activeIncident } from '../stores/site.svelte';
   import IncidentCard from './IncidentCard.svelte';
+  import AuditHistory from './audit/AuditHistory.svelte';
+  import { clock } from '../stores/site.svelte';
+  import { auditSummary, AUDIT_STATUS_COLOR, AUDIT_STATUS_LABEL, fmtDate, fmtDaysLeft } from '../domain/audit';
 
   let asset = $derived(app.site.assets.find((a) => a.id === app.selectedId));
   let base = $derived(asset ? MODELS[asset.kind] : null);
@@ -57,51 +60,65 @@
       </div>
     </div>
 
+    {#if asset.kind === 'extinguisher'}
+      {@const sum = auditSummary(app.site, 'fire', asset.id, clock.minute)}
+      <div class="audit" style="--c:{AUDIT_STATUS_COLOR[sum.status]}">
+        <div class="arow"><span class="lbl">การตรวจ</span><span class="ast"><i></i>{AUDIT_STATUS_LABEL[sum.status]}</span></div>
+        <div class="agrid">
+          <span>ตรวจแล้ว</span><b>{sum.count} ครั้ง</b>
+          <span>ตรวจล่าสุด</span><b>{sum.last ? fmtDate(sum.last.at) : '-'}</b>
+          <span>ครั้งถัดไป</span><b>{sum.nextDue ? `${fmtDate(sum.nextDue)} (${fmtDaysLeft(sum.daysLeft)})` : 'ยังไม่มีกำหนด'}</b>
+        </div>
+        <button class="doaudit" onclick={() => actions.openAuditForm('fire', asset!.id)}>✓ บันทึกการตรวจ</button>
+        <AuditHistory module="fire" targetId={asset.id} limit={3} />
+      </div>
+    {:else}
     <div class="andon">
-      <div class="arow">
-        <span class="lbl">Andon</span>
-        {#if base.andon === 'none'}
-          <span class="na">ประเภทนี้ไม่มี Andon</span>
-        {:else}
-          <label class="switch" title={editable ? '' : 'สลับเป็นโหมดแก้ไขผังเพื่อเปิด/ปิด'}>
-            <input type="checkbox" checked={asset.andon} disabled={!editable}
-              onchange={(e) => actions.setAndon(asset!.id, e.currentTarget.checked)} />
-            <span class="track"><span class="thumb"></span></span>
-            <span>{asset.andon ? 'เปิด' : 'ปิด'}</span>
-          </label>
+        <div class="arow">
+          <span class="lbl">Andon</span>
+          {#if base.andon === 'none'}
+            <span class="na">ประเภทนี้ไม่มี Andon</span>
+          {:else}
+            <label class="switch" title={editable ? '' : 'สลับเป็นโหมดแก้ไขผังเพื่อเปิด/ปิด'}>
+              <input type="checkbox" checked={asset.andon} disabled={!editable}
+                onchange={(e) => actions.setAndon(asset!.id, e.currentTarget.checked)} />
+              <span class="track"><span class="thumb"></span></span>
+              <span>{asset.andon ? 'เปิด' : 'ปิด'}</span>
+            </label>
+          {/if}
+        </div>
+  
+        {#if asset.andon}
+          {@const inc = activeIncident(asset.id)}
+          {@const cur = app.site.andonStates.find((x) => x.id === asset!.status)}
+          <p class="cur">
+            <span class="dot" style="background:{cur?.color ?? '#94a3b8'}"></span>
+            สถานะตอนนี้: <b>{cur?.name ?? '-'}</b>
+          </p>
+          {#if inc}
+            <IncidentCard incident={inc} showAsset={false} />
+          {:else}
+            <span class="lbl">แจ้ง Andon</span>
+            <div class="states">
+              {#each raisable as st (st.id)}
+                <button style="--c:{st.color}" disabled={cur?.system === 'offline'} onclick={() => actions.raiseAndon(asset!.id, st.id)}>
+                  <span class="dot"></span>{st.name}
+                </button>
+              {/each}
+            </div>
+            <button class="offline" onclick={() => actions.setOffline(asset!.id, cur?.system !== 'offline')}>
+              {cur?.system === 'offline' ? '↺ กลับมาเชื่อมต่อแล้ว' : 'ตั้งเป็นขาดการเชื่อมต่อ'}
+            </button>
+          {/if}
+          {#if line?.mode === 'byLine'}
+            <p class="note">
+              <span class="dot" style="background:{shown}"></span>
+              {line.name} เป็นแบบ ByLine: ไฟแสดงสถานะที่ร้ายแรงที่สุดของทั้งไลน์
+            </p>
+          {/if}
         {/if}
       </div>
-
-      {#if asset.andon}
-        {@const inc = activeIncident(asset.id)}
-        {@const cur = app.site.andonStates.find((x) => x.id === asset!.status)}
-        <p class="cur">
-          <span class="dot" style="background:{cur?.color ?? '#94a3b8'}"></span>
-          สถานะตอนนี้: <b>{cur?.name ?? '-'}</b>
-        </p>
-        {#if inc}
-          <IncidentCard incident={inc} showAsset={false} />
-        {:else}
-          <span class="lbl">แจ้ง Andon</span>
-          <div class="states">
-            {#each raisable as st (st.id)}
-              <button style="--c:{st.color}" disabled={cur?.system === 'offline'} onclick={() => actions.raiseAndon(asset!.id, st.id)}>
-                <span class="dot"></span>{st.name}
-              </button>
-            {/each}
-          </div>
-          <button class="offline" onclick={() => actions.setOffline(asset!.id, cur?.system !== 'offline')}>
-            {cur?.system === 'offline' ? '↺ กลับมาเชื่อมต่อแล้ว' : 'ตั้งเป็นขาดการเชื่อมต่อ'}
-          </button>
-        {/if}
-        {#if line?.mode === 'byLine'}
-          <p class="note">
-            <span class="dot" style="background:{shown}"></span>
-            {line.name} เป็นแบบ ByLine: ไฟแสดงสถานะที่ร้ายแรงที่สุดของทั้งไลน์
-          </p>
-        {/if}
-      {/if}
-    </div>
+    {/if}
 
     <p class="pos">ตำแหน่ง X {asset.x} · Z {asset.z} · หมุน {asset.rot * 90}°</p>
 
@@ -144,6 +161,13 @@
   .stepper button:hover:not(:disabled) { background: #eff6ff; color: #2563eb; border-color: #bfdbfe; }
   .stepper button:disabled { opacity: 0.35; cursor: default; }
 
+  .audit { display: flex; flex-direction: column; gap: 8px; padding-top: 8px; border-top: 1px solid #f1f5f9; }
+  .ast { display: flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 600; color: #0f172a; }
+  .ast i { width: 9px; height: 9px; border-radius: 50%; background: var(--c); }
+  .agrid { display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; font-size: 12.5px; color: #64748b; }
+  .agrid b { color: #0f172a; font-weight: 600; }
+  .doaudit { border: 0; background: #16a34a; color: #fff; border-radius: 7px; padding: 8px; font: 600 13px system-ui, sans-serif; cursor: pointer; }
+  .doaudit:hover { background: #15803d; }
   .andon { display: flex; flex-direction: column; gap: 8px; padding-top: 8px; border-top: 1px solid #f1f5f9; }
   .arow { display: flex; align-items: center; justify-content: space-between; }
   .na { font-size: 12px; color: #94a3b8; }

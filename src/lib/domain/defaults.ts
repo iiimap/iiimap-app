@@ -1,4 +1,4 @@
-import type { AndonState, Kpi, MetricsConfig } from './types';
+import type { AndonState, AuditConfig, Kpi, MetricsConfig } from './types';
 
 // สถานะ Andon ตั้งต้น (ผู้ใช้แก้ชื่อ สี และระดับความร้ายแรงได้ทั้งหมด)
 export const SEVERITY_MIN = 0;
@@ -31,6 +31,28 @@ export const DEFAULT_REASONS = [
   'ขาดพนักงาน',
   'อื่นๆ'
 ];
+
+// ค่าเริ่มต้นการตรวจ (ผู้ใช้แก้ได้)
+export const DEFAULT_AUDIT_CONFIG: AuditConfig = {
+  fire: {
+    intervalDays: 30, // ตรวจทุกเดือน
+    dueSoonDays: 7, // เตือนล่วงหน้า 7 วัน
+    checklist: [
+      'เข็มแรงดันอยู่ในช่องสีเขียว',
+      'สลักและซีลอยู่ครบ',
+      'สายฉีดและหัวฉีดไม่ชำรุด',
+      'ตัวถังไม่บุบ ไม่เป็นสนิม',
+      'ป้ายชัดเจน ไม่มีสิ่งกีดขวาง',
+      'ยังไม่หมดอายุ'
+    ]
+  },
+  fiveS: {
+    intervalDays: 30,
+    dueSoonDays: 7,
+    categories: ['สะสาง', 'สะดวก', 'สะอาด', 'สุขลักษณะ', 'สร้างนิสัย'],
+    passScore: 60 // ผ่านเมื่อคะแนนรวม ≥ 60%
+  }
+};
 
 /** เก็บประวัติการแจ้งล่าสุดไม่เกินเท่านี้ (ในเบราว์เซอร์) */
 export const INCIDENT_LIMIT = 5000;
