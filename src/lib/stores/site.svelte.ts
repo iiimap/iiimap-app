@@ -3,7 +3,7 @@ import { MODELS } from '../domain/catalog';
 import { DEFAULT_ANDON_STATES, DEFAULT_KPIS, DEFAULT_REASONS, INCIDENT_LIMIT, LINE_COLORS, SEVERITY_MAX, clampSeverity } from '../domain/defaults';
 import type { KpiPeriod } from '../domain/kpi';
 import { footprint, snapAxis } from '../domain/geometry';
-import type { AndonState, Asset, AssetKind, AuditModule, AuditRecord, Incident, Kpi, LineMode, Site } from '../domain/types';
+import type { AndonState, Asset, AssetKind, AuditConfig, AuditModule, AuditRecord, Incident, Kpi, LineMode, Site } from '../domain/types';
 import { auditSummary, AUDIT_STATUS_COLOR } from '../domain/audit';
 import { DEFAULT_AUDIT_CONFIG } from '../domain/defaults';
 import { loadLocal, saveLocal } from './persist';
@@ -33,6 +33,18 @@ function loadRecent(): string[] {
   }
 }
 
+
+/** หน้าในศูนย์ตั้งค่า */
+export type SettingsSection = 'site' | 'fiveS' | 'fire';
+
+/** ค่าที่แก้ในศูนย์ตั้งค่า (เป็นฉบับร่าง จนกว่าจะกดบันทึก) */
+export interface SettingsDraft {
+  name: string;
+  width: number;
+  depth: number;
+  audit: AuditConfig;
+}
+
 // state กลางของแอป (Svelte 5 runes)
 export const app = $state({
   site: (loadLocal() ?? structuredClone(emptySite)) as Site,
@@ -45,7 +57,7 @@ export const app = $state({
   showGrid: true,
   showAllNames: false, // แสดงชื่อเครื่องทุกตัวบนผัง
   tvMode: false, // โหมดจอ TV (แขวนหน้าไลน์)
-  siteSettingsOpen: false, // หน้าต่างตั้งค่าผัง
+  settings: null as SettingsSection | null, // ศูนย์ตั้งค่าที่เปิดอยู่ (หน้าไหน)
   frameLines: [] as string[], // ไลน์ที่แสดงกรอบ (และชื่อเครื่องในไลน์)
   recent: loadRecent(), // โมเดลที่ใช้ล่าสุด (สูงสุด 6)
   ribbonTab: 'insert' as RibbonTab,
@@ -271,6 +283,16 @@ export const SITE_MIN = 10;
 export const SITE_MAX = 500; // เพดานทางเทคนิค (ไม่เกี่ยวกับราคา)
 
 /** เครื่องที่จะหลุดขอบ ถ้าเปลี่ยนผังเป็นขนาด width × depth (ผังขยายจากกึ่งกลาง) */
+export function siteSizeError(name: string, width: number, depth: number): string {
+  if (!name.trim()) return 'กรุณาตั้งชื่อผัง';
+  if (!Number.isInteger(width) || !Number.isInteger(depth)) return 'ขนาดผังต้องเป็นจำนวนเต็ม (เมตร)';
+  if (width < SITE_MIN || depth < SITE_MIN || width > SITE_MAX || depth > SITE_MAX) return `ขนาดผังต้องอยู่ระหว่าง ${SITE_MIN}–${SITE_MAX} ม.`;
+  const out = assetsOutside(width, depth);
+  if (out.length)
+    return `เครื่อง ${out.length} ตัวจะหลุดขอบผัง (${out.slice(0, 3).map((a) => a.name).join(', ')}${out.length > 3 ? ' …' : ''}) ย้ายเข้ามาก่อน หรือขยายผังให้ใหญ่ขึ้น`;
+  return '';
+}
+
 export function assetsOutside(width: number, depth: number): Asset[] {
   const EPS = 1e-6;
   return app.site.assets.filter((a) => {
@@ -650,36 +672,6 @@ export const actions = {
     app.auditForm = { module, targetId };
   },
 
-  setAuditNumber(module: AuditModule, key: 'intervalDays' | 'dueSoonDays' | 'passScore', value: number) {
-    if (!Number.isFinite(value)) return;
-    const cfg = app.site.auditConfig[module] as Record<string, unknown>;
-    const v = key === 'passScore' ? Math.min(100, Math.max(0, Math.round(value))) : Math.max(key === 'intervalDays' ? 1 : 0, Math.round(value));
-    if (cfg[key] === v || !(key in cfg)) return;
-    checkpoint();
-    cfg[key] = v;
-  },
-
-  addAuditItem(module: AuditModule) {
-    checkpoint();
-    const list = module === 'fire' ? app.site.auditConfig.fire.checklist : app.site.auditConfig.fiveS.categories;
-    let n = 1;
-    while (list.includes(`หัวข้อใหม่ ${n}`)) n++;
-    list.push(`หัวข้อใหม่ ${n}`);
-  },
-
-  removeAuditItem(module: AuditModule, index: number) {
-    const list = module === 'fire' ? app.site.auditConfig.fire.checklist : app.site.auditConfig.fiveS.categories;
-    if (list.length <= 1 || index < 0 || index >= list.length) return;
-    checkpoint();
-    list.splice(index, 1);
-  },
-
-  resetAuditConfig(module: AuditModule) {
-    checkpoint();
-    if (module === 'fire') app.site.auditConfig.fire = structuredClone(DEFAULT_AUDIT_CONFIG.fire);
-    else app.site.auditConfig.fiveS = structuredClone(DEFAULT_AUDIT_CONFIG.fiveS);
-  },
-
   // ---------- สาเหตุ (reason codes) ----------
   addReason() {
     checkpoint();
@@ -931,20 +923,35 @@ export const actions = {
   },
 
   // ---------- ผัง ----------
-  /** ตั้งชื่อและขนาดผัง: คืนข้อความปัญหา หรือ '' ถ้าสำเร็จ */
-  setSiteSettings(name: string, width: number, depth: number): string {
-    const n = name.trim();
-    if (!n) return 'กรุณาตั้งชื่อผัง';
-    if (!Number.isInteger(width) || !Number.isInteger(depth)) return 'ขนาดผังต้องเป็นจำนวนเต็ม (เมตร)';
-    if (width < SITE_MIN || depth < SITE_MIN || width > SITE_MAX || depth > SITE_MAX)
-      return `ขนาดผังต้องอยู่ระหว่าง ${SITE_MIN}–${SITE_MAX} ม.`;
-    const out = assetsOutside(width, depth);
-    if (out.length) return `เครื่อง ${out.length} ตัวจะหลุดขอบผัง (${out.slice(0, 3).map((a) => a.name).join(', ')}${out.length > 3 ? ' …' : ''}) ย้ายเข้ามาก่อน หรือขยายผังให้ใหญ่ขึ้น`;
-    if (n === app.site.name && width === app.site.width && depth === app.site.depth) return '';
+  /** ค่าปัจจุบันสำหรับเริ่มแก้ในศูนย์ตั้งค่า */
+  settingsDraft(): SettingsDraft {
+    return {
+      name: app.site.name,
+      width: app.site.width,
+      depth: app.site.depth,
+      audit: structuredClone($state.snapshot(app.site.auditConfig)) as AuditConfig
+    };
+  },
+
+  /** บันทึกศูนย์ตั้งค่า: คืนข้อความปัญหา หรือ '' ถ้าสำเร็จ (ย้อนกลับได้ 1 ขั้น) */
+  saveSettings(d: SettingsDraft): string {
+    const err = siteSizeError(d.name, d.width, d.depth);
+    if (err) return err;
+    const clean = (list: string[]) => [...new Set(list.map((x) => x.trim()).filter(Boolean))];
+    const audit = structuredClone(d.audit);
+    audit.fire.checklist = clean(audit.fire.checklist);
+    audit.fiveS.categories = clean(audit.fiveS.categories);
+    if (!audit.fire.checklist.length || !audit.fiveS.categories.length) return 'รายการหัวข้อต้องมีอย่างน้อย 1 ข้อ';
+    for (const m of [audit.fire, audit.fiveS]) {
+      m.intervalDays = Math.max(1, Math.round(m.intervalDays) || 1);
+      m.dueSoonDays = Math.min(m.intervalDays - 1, Math.max(0, Math.round(m.dueSoonDays) || 0));
+    }
+    audit.fiveS.passScore = Math.min(100, Math.max(0, Math.round(audit.fiveS.passScore)));
     checkpoint();
-    app.site.name = n;
-    app.site.width = width;
-    app.site.depth = depth;
+    app.site.name = d.name.trim();
+    app.site.width = d.width;
+    app.site.depth = d.depth;
+    app.site.auditConfig = audit;
     return '';
   },
 

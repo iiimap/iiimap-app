@@ -10,7 +10,7 @@
   import AndonPanel from '../lib/components/panels/AndonPanel.svelte';
   import KpiPanel from '../lib/components/panels/KpiPanel.svelte';
   import Toast from '../lib/components/Toast.svelte';
-  import SiteSettings from '../lib/components/SiteSettings.svelte';
+  import SettingsCenter from '../lib/components/settings/SettingsCenter.svelte';
   import TvOverlay from '../lib/components/TvOverlay.svelte';
   import FirePanel from '../lib/components/audit/FirePanel.svelte';
   import FiveSPanel from '../lib/components/audit/FiveSPanel.svelte';
@@ -32,6 +32,14 @@
       return;
     }
     if (t.closest('input, select, textarea')) return;
+    if (app.settings) return; // ศูนย์ตั้งค่าเปิดอยู่: คีย์ลัดของผังหยุดทำงาน
+
+    // Ctrl+, = เปิดศูนย์ตั้งค่า
+    if ((e.ctrlKey || e.metaKey) && e.code === 'Comma' && !app.tvMode) {
+      e.preventDefault();
+      app.settings = 'site';
+      return;
+    }
 
     if (e.code === 'Escape' && app.tvMode) {
       actions.exitTv();
@@ -112,7 +120,7 @@
   {#if !app.tvMode}<StatusBar {engine} />{/if}
 </main>
 
-<SiteSettings />
+<SettingsCenter />
 <AuditForm />
 <ConfirmModal />
 

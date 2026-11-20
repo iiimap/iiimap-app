@@ -54,6 +54,37 @@ export const DEFAULT_AUDIT_CONFIG: AuditConfig = {
   }
 };
 
+/** แม่แบบรายการหัวข้อ เลือกใช้ได้ในศูนย์ตั้งค่า */
+export const AUDIT_TEMPLATES: Record<'fire' | 'fiveS', { name: string; items: string[] }[]> = {
+  fire: [
+    { name: 'มาตรฐานถังดับเพลิง', items: DEFAULT_AUDIT_CONFIG.fire.checklist },
+    { name: 'ตรวจแบบย่อ', items: ['เข็มแรงดันอยู่ในช่องสีเขียว', 'สลักและซีลอยู่ครบ', 'ไม่มีสิ่งกีดขวาง'] },
+    {
+      name: 'ละเอียด (รวมป้ายและการติดตั้ง)',
+      items: [
+        ...DEFAULT_AUDIT_CONFIG.fire.checklist,
+        'ติดตั้งสูงไม่เกิน 1.5 ม. จากพื้น',
+        'มีป้ายบอกตำแหน่งมองเห็นได้ชัด',
+        'มีบัตรบันทึกการตรวจติดที่ถัง'
+      ]
+    }
+  ],
+  fiveS: [
+    { name: '5ส มาตรฐาน', items: DEFAULT_AUDIT_CONFIG.fiveS.categories },
+    { name: '6ส (เพิ่มความปลอดภัย)', items: [...DEFAULT_AUDIT_CONFIG.fiveS.categories, 'ความปลอดภัย'] },
+    { name: '3ส (เริ่มต้น)', items: ['สะสาง', 'สะดวก', 'สะอาด'] }
+  ]
+};
+
+/** รอบตรวจสำเร็จรูป (วัน) */
+export const INTERVAL_PRESETS = [
+  { days: 7, label: 'ทุกสัปดาห์' },
+  { days: 30, label: 'ทุกเดือน' },
+  { days: 90, label: 'ทุก 3 เดือน' },
+  { days: 180, label: 'ทุก 6 เดือน' },
+  { days: 365, label: 'ทุกปี' }
+];
+
 /** เก็บประวัติการแจ้งล่าสุดไม่เกินเท่านี้ (ในเบราว์เซอร์) */
 export const INCIDENT_LIMIT = 5000;
 

@@ -3,14 +3,11 @@
   import { app, actions, clock, focusAsset } from '../../stores/site.svelte';
   import { auditSummary, AUDIT_STATUS_COLOR, AUDIT_STATUS_LABEL, fmtDate, fmtDaysLeft, type AuditStatus } from '../../domain/audit';
   import AuditHistory from './AuditHistory.svelte';
-  import AuditSettings from './AuditSettings.svelte';
 
   const ORDER: AuditStatus[] = ['overdue', 'failed', 'never', 'soon', 'ok'];
   let editable = $derived(app.mode === 'edit');
   let filter = $state<AuditStatus | 'all'>('all');
   let openId = $state<string | null>(null);
-  let showSettings = $state(false);
-
   let rows = $derived(
     app.site.assets
       .filter((a) => a.kind === 'extinguisher')
@@ -68,8 +65,7 @@
     {/each}
 
     <section class="settings">
-      <button class="toggle" onclick={() => (showSettings = !showSettings)}>{showSettings ? '▾' : '▸'} ตั้งค่าการตรวจ (ทุก {app.site.auditConfig.fire.intervalDays} วัน)</button>
-      {#if showSettings}<AuditSettings module="fire" />{/if}
+      <button class="toggle" onclick={() => (app.settings = 'fire')}>⚙ ตั้งค่าการตรวจ (ทุก {app.site.auditConfig.fire.intervalDays} วัน)</button>
     </section>
   </div>
 </aside>

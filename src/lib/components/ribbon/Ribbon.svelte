@@ -17,7 +17,7 @@
 
   let { engine }: { engine?: MapEngine } = $props();
 
-  const VERSION = 'v0.33';
+  const VERSION = 'v0.34';
   const SAVE_TEXT = { saved: 'บันทึกแล้ว', saving: 'กำลังบันทึก…', error: 'บันทึกไม่สำเร็จ' };
 
   const TABS = [
@@ -122,10 +122,13 @@
   <div class="titlebar">
     <div class="brand"><span class="logo">iii</span>Map</div>
     <span class="divider"></span>
-    <button class="doc" title="ตั้งค่าผัง (ชื่อ, ขนาด)" onclick={() => (app.siteSettingsOpen = true)}>{app.site.name}</button>
+    <button class="doc" title="ตั้งค่าผัง (ชื่อ, ขนาด)" onclick={() => (app.settings = 'site')}>{app.site.name}</button>
     <span class="save {app.saveState}">{SAVE_TEXT[app.saveState]}</span>
     <span class="spacer"></span>
     <span class="ver">{VERSION}</span>
+    <button class="gear" title="ตั้งค่า (Ctrl+,)" aria-label="ตั้งค่า" onclick={() => (app.settings = 'site')}>
+      <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" /></svg>
+    </button>
     <div class="mode" role="group" aria-label="โหมด">
       <button class:on={app.mode === 'view'} onclick={() => actions.setMode('view')}>
         <Icon name="eye" size={15} /> ดูผัง
@@ -434,6 +437,9 @@
   }
   .chip:hover:not(:disabled) { background: #f8fafc; border-color: var(--c); }
   .chip.on { background: color-mix(in srgb, var(--c) 14%, white); border-color: var(--c); font-weight: 600; }
+  .gear { width: 32px; height: 32px; display: grid; place-items: center; border: 0; background: transparent; border-radius: 8px; color: #475569; cursor: pointer; }
+  .gear:hover { background: #f1f5f9; color: #0f172a; }
+  .gear svg { fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
   .bigstat { display: flex; flex-direction: column; align-items: center; justify-content: center; min-width: 84px; padding: 0 8px; }
   .bigstat b { font-size: 26px; line-height: 1.1; color: var(--c, #0f172a); font-variant-numeric: tabular-nums; }
   .bigstat small { font-size: 11px; color: #64748b; }

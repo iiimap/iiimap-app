@@ -11,17 +11,6 @@ export const guarded = {
     if (await ask({ title: 'ลบบันทึกการตรวจนี้?', message: 'ใช้เมื่อบันทึกผิด จำนวนครั้งและวันตรวจครั้งถัดไปจะคำนวณใหม่' })) actions.deleteAudit(id);
   },
 
-  async removeAuditItem(module: 'fire' | 'fiveS', index: number) {
-    const list = module === 'fire' ? app.site.auditConfig.fire.checklist : app.site.auditConfig.fiveS.categories;
-    if (list[index] === undefined) return;
-    if (await ask({ title: `ลบหัวข้อ "${list[index]}"?`, message: 'บันทึกการตรวจเก่ายังเก็บผลของหัวข้อนี้ไว้' })) actions.removeAuditItem(module, index);
-  },
-
-  async resetAuditConfig(module: 'fire' | 'fiveS') {
-    if (await ask({ title: 'คืนค่าการตรวจเริ่มต้น?', message: 'รอบการตรวจ วันเตือนล่วงหน้า และรายการหัวข้อจะกลับเป็นค่าเริ่มต้น', confirmText: 'คืนค่า' }))
-      actions.resetAuditConfig(module);
-  },
-
   async cancelIncident(id: string) {
     const i = app.site.incidents.find((x) => x.id === id);
     if (!i) return;

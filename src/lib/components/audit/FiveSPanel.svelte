@@ -3,9 +3,7 @@
   import { app, actions, clock, focusLine } from '../../stores/site.svelte';
   import { auditSummary, AUDIT_STATUS_COLOR, AUDIT_STATUS_LABEL, fiveSColor, fmtDate, fmtDaysLeft } from '../../domain/audit';
   import AuditHistory from './AuditHistory.svelte';
-  import AuditSettings from './AuditSettings.svelte';
 
-  let showSettings = $state(false);
   let pass = $derived(app.site.auditConfig.fiveS.passScore);
 
   let rows = $derived(
@@ -62,8 +60,7 @@
     {/each}
 
     <section class="settings">
-      <button class="toggle" onclick={() => (showSettings = !showSettings)}>{showSettings ? '▾' : '▸'} ตั้งค่าการตรวจ (ทุก {app.site.auditConfig.fiveS.intervalDays} วัน · ผ่าน {pass}%)</button>
-      {#if showSettings}<AuditSettings module="fiveS" />{/if}
+      <button class="toggle" onclick={() => (app.settings = 'fiveS')}>⚙ ตั้งค่าการตรวจ (ทุก {app.site.auditConfig.fiveS.intervalDays} วัน · ผ่าน {pass}%)</button>
     </section>
   </div>
 </aside>
