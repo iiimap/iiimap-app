@@ -126,7 +126,11 @@ function readAuditConfig(v: any): AuditConfig {
       intervalDays: pos(v?.fiveS?.intervalDays, d.fiveS.intervalDays),
       dueSoonDays: isNum(v?.fiveS?.dueSoonDays) && v.fiveS.dueSoonDays >= 0 ? Math.round(v.fiveS.dueSoonDays) : d.fiveS.dueSoonDays,
       categories: list(v?.fiveS?.categories, d.fiveS.categories),
-      passScore: isNum(v?.fiveS?.passScore) ? Math.min(100, Math.max(0, v.fiveS.passScore)) : d.fiveS.passScore
+      passScore: isNum(v?.fiveS?.passScore) ? Math.min(100, Math.max(0, v.fiveS.passScore)) : d.fiveS.passScore,
+      // ไฟล์เก่าไม่มีเกณฑ์ "ดี" ใช้ค่าเดิม (สูงกว่า 80 กับเกณฑ์ผ่าน)
+      goodScore: isNum(v?.fiveS?.goodScore)
+        ? Math.min(100, Math.max(isNum(v?.fiveS?.passScore) ? v.fiveS.passScore : d.fiveS.passScore, v.fiveS.goodScore))
+        : Math.max(d.fiveS.goodScore, isNum(v?.fiveS?.passScore) ? v.fiveS.passScore : 0)
     }
   };
 }

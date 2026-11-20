@@ -42,10 +42,20 @@
     wasOpen = open;
   });
 
+  // ช่องหัวข้อที่ว่าง / ซ้ำ ไม่นับเป็นการแก้ (ตอนบันทึกจะถูกตัดออกอยู่แล้ว)
+  const clean = (list: string[]) => [...new Set(list.map((x) => x.trim()).filter(Boolean))];
+  function norm(d: SettingsDraft): SettingsDraft {
+    const x = JSON.parse(JSON.stringify(d)) as SettingsDraft;
+    x.audit.fire.checklist = clean(x.audit.fire.checklist);
+    x.audit.fiveS.categories = clean(x.audit.fiveS.categories);
+    return x;
+  }
+
   // นับว่าแก้กี่รายการ (และแก้หน้าไหนบ้าง)
   function diff(d: SettingsDraft | null) {
     if (!d) return { total: 0, by: {} as Record<SettingsSection, number> };
     const b = JSON.parse(base) as SettingsDraft;
+    d = norm(d);
     const ne = (x: unknown, y: unknown) => JSON.stringify(x) !== JSON.stringify(y);
     const site = [ne(d.name.trim(), b.name), ne(d.width, b.width) || ne(d.depth, b.depth)].filter(Boolean).length;
     const mod = (k: 'fire' | 'fiveS') =>

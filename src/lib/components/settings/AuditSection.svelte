@@ -1,11 +1,12 @@
 <script lang="ts">
   // ศูนย์ตั้งค่า › 5ส / ถังดับเพลิง
-  // รอบตรวจ (ปุ่มลัด) · เตือนล่วงหน้า (แถบเลื่อน + ไทม์ไลน์สี) · เกณฑ์ผ่าน (5ส) · รายการหัวข้อ (ลากเรียง, แม่แบบ)
+  // รอบตรวจ (ปุ่มลัด) · เตือนล่วงหน้า (แถบเลื่อน + ไทม์ไลน์สี) · เกณฑ์คะแนน (5ส) · รายการหัวข้อ (ลากเรียง, แม่แบบ)
   import type { AuditModule } from '../../domain/types';
   import { type SettingsDraft } from '../../stores/site.svelte';
   import { ask } from '../../stores/confirm.svelte';
   import { AUDIT_TEMPLATES, DEFAULT_AUDIT_CONFIG, INTERVAL_PRESETS } from '../../domain/defaults';
-  import { AUDIT_STATUS_COLOR, fiveSColor } from '../../domain/audit';
+  import { AUDIT_STATUS_COLOR } from '../../domain/audit';
+  import { tick } from 'svelte';
 
   let { module, draft = $bindable() }: { module: AuditModule; draft: SettingsDraft } = $props();
 
@@ -37,45 +38,112 @@
   let soonPct = $derived((cfg.dueSoonDays / cfg.intervalDays) * 82);
   let thing = $derived(module === 'fire' ? 'ถัง' : 'ไลน์');
 
-  // ---------- เกณฑ์ผ่าน (5ส) ----------
+  // ---------- เกณฑ์คะแนน (5ส): 2 ตัวจับบนแถบ (ผ่าน / ดี) หรือพิมพ์ตัวเลขเอง ----------
   let pass = $derived(draft.audit.fiveS.passScore);
-  let good = $derived(Math.max(80, pass));
-  let maxPoints = $derived(draft.audit.fiveS.categories.length * 5);
-  let needPoints = $derived(Math.ceil((pass / 100) * maxPoints - 1e-9));
+  let good = $derived(draft.audit.fiveS.goodScore);
+  let maxPoints = $derived(draft.audit.fiveS.categories.filter((x) => x.trim()).length * 5);
+  const need = (pct: number) => Math.ceil((pct / 100) * maxPoints - 1e-9);
+  let scaleEl = $state<HTMLElement>();
+  let grab = $state<'pass' | 'good' | null>(null);
+  const clampPct = (v: number) => Math.max(0, Math.min(100, Math.round(v) || 0));
+  function setPass(v: number) {
+    draft.audit.fiveS.passScore = clampPct(v);
+    if (draft.audit.fiveS.goodScore < draft.audit.fiveS.passScore) draft.audit.fiveS.goodScore = draft.audit.fiveS.passScore;
+  }
+  function setGood(v: number) {
+    draft.audit.fiveS.goodScore = clampPct(v);
+    if (draft.audit.fiveS.passScore > draft.audit.fiveS.goodScore) draft.audit.fiveS.passScore = draft.audit.fiveS.goodScore;
+  }
+  const pctAt = (x: number) => {
+    const r = scaleEl!.getBoundingClientRect();
+    return ((x - r.left) / r.width) * 100;
+  };
+  function scaleDown(e: PointerEvent) {
+    // กดตรงไหนของแถบ = ตัวจับที่ใกล้ที่สุดย้ายมาที่นั่น แล้วลากต่อได้
+    const v = pctAt(e.clientX);
+    grab = Math.abs(v - pass) <= Math.abs(v - good) && !(pass === good && v > good) ? 'pass' : 'good';
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    scaleMove(e);
+  }
+  function scaleMove(e: PointerEvent) {
+    if (!grab) return;
+    const v = pctAt(e.clientX);
+    if (grab === 'pass') setPass(Math.min(v, good));
+    else setGood(Math.max(v, pass));
+  }
+  function handleKey(e: KeyboardEvent, which: 'pass' | 'good') {
+    const step = e.shiftKey ? 10 : 1;
+    const d = e.code === 'ArrowRight' || e.code === 'ArrowUp' ? step : e.code === 'ArrowLeft' || e.code === 'ArrowDown' ? -step : 0;
+    if (!d) return;
+    e.preventDefault();
+    if (which === 'pass') setPass(Math.min(pass + d, good));
+    else setGood(Math.max(good + d, pass));
+  }
 
   // ---------- รายการหัวข้อ ----------
-  let newItem = $state('');
-  let dupes = $derived(items.map((x, i) => !x.trim() || items.findIndex((y) => y.trim() === x.trim()) !== i));
+  let listEl = $state<HTMLElement>();
+  let dupes = $derived(items.map((x, i) => !!x.trim() && items.findIndex((y) => y.trim() === x.trim()) !== i));
 
-  function addItem() {
-    const t = newItem.trim();
-    if (!t) return;
-    if (items.some((x) => x.trim() === t)) return;
-    setItems([...items, t]);
-    newItem = '';
+  // กด + = เพิ่มช่องว่างท้ายรายการแล้วพิมพ์ได้เลย (ช่องที่ว่างอยู่ตอนบันทึก จะไม่ถูกบันทึก)
+  async function addItem() {
+    const last = items.length - 1;
+    if (last >= 0 && !items[last].trim()) return focusRow(last);
+    setItems([...items, '']);
+    await tick();
+    focusRow(items.length - 1);
+  }
+  function focusRow(i: number) {
+    listEl?.querySelectorAll<HTMLInputElement>('li.it input')[i]?.focus();
   }
 
   async function removeItem(i: number) {
-    if (items.length <= 1) return;
-    const name = items[i].trim() || '(ไม่มีชื่อ)';
-    if (!(await ask({ title: `ลบหัวข้อ "${name}"?`, message: 'มีผลหลังกดบันทึก · บันทึกการตรวจเก่ายังเก็บผลของหัวข้อนี้ไว้' }))) return;
+    if (items.filter((x) => x.trim()).length <= 1 && items[i].trim()) return;
+    // ช่องว่างที่ยังไม่ได้พิมพ์ ลบได้เลย ไม่มีข้อมูลให้เสีย
+    if (items[i].trim() && !(await ask({ title: `ลบหัวข้อ "${items[i].trim()}"?`, message: 'มีผลหลังกดบันทึก · บันทึกการตรวจเก่ายังเก็บผลของหัวข้อนี้ไว้' }))) return;
     setItems(items.filter((_, j) => j !== i));
   }
+  let canRemove = $derived(items.filter((x) => x.trim()).length > 1);
 
-  // ลากเรียง: กดค้างที่จุดจับ (⋮⋮) แล้วลาก
-  let armed = $state(-1);
-  let dragFrom = $state(-1);
-  let dragOver = $state(-1);
-  function drop(to: number) {
-    if (dragFrom < 0 || dragFrom === to) return reset();
-    const list = [...items];
-    const [x] = list.splice(dragFrom, 1);
-    list.splice(to, 0, x);
-    setItems(list);
-    reset();
+  // ลากเรียง: กดค้างที่จุดจับ (⋮⋮) แล้วลากขึ้นลง แถวอื่นเลื่อนหลบให้เห็นตำแหน่งที่จะวาง
+  let drag = $state<{ from: number; to: number; startY: number; dy: number; h: number; top0: number } | null>(null);
+  let settling = $state(false); // ปิดแอนิเมชันตอนวาง ไม่ให้แถวกระตุก
+  function gripDown(e: PointerEvent, i: number) {
+    if (e.button !== 0 || items.length < 2) return;
+    e.preventDefault();
+    const rows = [...listEl!.querySelectorAll<HTMLElement>('li.it')];
+    const tops = rows.map((r) => r.getBoundingClientRect().top);
+    const h = tops[1] - tops[0];
+    drag = { from: i, to: i, startY: e.clientY, dy: 0, h, top0: tops[i] };
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
   }
-  function reset() {
-    armed = dragFrom = dragOver = -1;
+  function gripMove(e: PointerEvent) {
+    if (!drag) return;
+    const n = items.length;
+    const min = -drag.from * drag.h, max = (n - 1 - drag.from) * drag.h;
+    drag.dy = Math.max(min, Math.min(max, e.clientY - drag.startY));
+    drag.to = Math.max(0, Math.min(n - 1, drag.from + Math.round(drag.dy / drag.h)));
+  }
+  async function gripUp() {
+    if (!drag) return;
+    const { from, to } = drag;
+    settling = true;
+    if (from !== to) {
+      const list = [...items];
+      const [x] = list.splice(from, 1);
+      list.splice(to, 0, x);
+      setItems(list);
+    }
+    drag = null;
+    await tick();
+    requestAnimationFrame(() => (settling = false));
+  }
+  function offset(i: number): number {
+    if (!drag) return 0;
+    const { from, to, dy, h } = drag;
+    if (i === from) return dy;
+    if (from < to && i > from && i <= to) return -h;
+    if (from > to && i >= to && i < from) return h;
+    return 0;
   }
 
   // แม่แบบ
@@ -145,22 +213,36 @@
   </p>
 </section>
 
-<!-- 3. เกณฑ์ผ่าน (5ส) -->
+<!-- 3. เกณฑ์คะแนน (5ส) -->
 {#if module === 'fiveS'}
   <section class="card">
-    <h3><span class="n">3</span>เกณฑ์ผ่าน <b class="val" style="color:{fiveSColor(pass, pass)}">{pass}%</b></h3>
-    <input class="range" type="range" min="0" max="100" step="5" bind:value={draft.audit.fiveS.passScore} />
-    <div class="bar">
-      <span style="flex-basis:{pass}%;background:#ef4444"></span>
-      <span style="flex-basis:{good - pass}%;background:#f59e0b"></span>
-      <span style="flex-basis:{100 - good}%;background:#22c55e"></span>
+    <h3><span class="n">3</span>เกณฑ์คะแนน</h3>
+    <div class="scale" bind:this={scaleEl} role="presentation"
+      onpointerdown={scaleDown} onpointermove={scaleMove} onpointerup={() => (grab = null)} onpointercancel={() => (grab = null)}>
+      <div class="track">
+        <span style="width:{pass}%;background:#ef4444"></span>
+        <span style="width:{good - pass}%;background:#f59e0b"></span>
+        <span style="width:{100 - good}%;background:#22c55e"></span>
+      </div>
+      <button class="knob" class:active={grab === 'pass'} style="left:{pass}%" aria-label="เกณฑ์ผ่าน {pass}%" onkeydown={(e) => handleKey(e, 'pass')}><b>{pass}</b></button>
+      <button class="knob" class:active={grab === 'good'} style="left:{good}%" aria-label="เกณฑ์ดี {good}%" onkeydown={(e) => handleKey(e, 'good')}><b>{good}</b></button>
     </div>
-    <div class="legend">
-      <span><i style="background:#ef4444"></i>ไม่ผ่าน ต่ำกว่า {pass}%</span>
-      {#if good > pass}<span><i style="background:#f59e0b"></i>ผ่าน {pass}% ขึ้นไป</span>{/if}
-      <span><i style="background:#22c55e"></i>ดี {good}% ขึ้นไป</span>
+    <div class="scale-ticks"><span>0%</span><span>100%</span></div>
+
+    <div class="levels">
+      <div class="lv"><i style="background:#ef4444"></i><b>ไม่ผ่าน</b><span>ต่ำกว่า {pass}%</span></div>
+      <div class="lv">
+        <i style="background:#f59e0b"></i><b>ผ่าน</b>
+        <span>ตั้งแต่ <input type="number" min="0" max="100" value={pass} onchange={(e) => { setPass(+e.currentTarget.value); e.currentTarget.value = String(draft.audit.fiveS.passScore); }} /> %</span>
+        {#if maxPoints}<small>≥ {need(pass)}/{maxPoints} คะแนน</small>{/if}
+      </div>
+      <div class="lv">
+        <i style="background:#22c55e"></i><b>ดี</b>
+        <span>ตั้งแต่ <input type="number" min="0" max="100" value={good} onchange={(e) => { setGood(+e.currentTarget.value); e.currentTarget.value = String(draft.audit.fiveS.goodScore); }} /> %</span>
+        {#if maxPoints}<small>≥ {need(good)}/{maxPoints} คะแนน</small>{/if}
+      </div>
     </div>
-    <p class="explain">มี {draft.audit.fiveS.categories.length} หัวข้อ หัวข้อละ 0–5 คะแนน → ต้องได้อย่างน้อย <b>{needPoints} จาก {maxPoints} คะแนน</b> จึงผ่าน</p>
+    <p class="hint">ลากจุดบนแถบ หรือพิมพ์ตัวเลข · สีกรอบไลน์บนผังเป็นไปตามเกณฑ์นี้ · ผลการตรวจ "ผ่าน/ไม่ผ่าน" ใช้เกณฑ์ผ่าน</p>
   </section>
 {/if}
 
@@ -179,41 +261,30 @@
       {/if}
     </div>
   </div>
-  <ul class="items">
+  <ul class="items" class:settling bind:this={listEl}>
     {#each items as _, i (i)}
-      <li
-        class:over={dragOver === i && dragFrom !== i}
-        class:dragging={dragFrom === i}
-        draggable={armed === i}
-        ondragstart={(e) => { dragFrom = i; e.dataTransfer?.setData('text/plain', String(i)); }}
-        ondragover={(e) => { if (dragFrom >= 0) { e.preventDefault(); dragOver = i; } }}
-        ondrop={(e) => { e.preventDefault(); drop(i); }}
-        ondragend={reset}
-      >
-        <span class="grip" title="ลากเพื่อเรียงลำดับ" role="presentation" onpointerdown={() => (armed = i)} onpointerup={() => dragFrom < 0 && (armed = -1)}>
+      <li class="it" class:dragging={drag?.from === i} style="transform:translateY({offset(i)}px)">
+        <span class="grip" title="ลากเพื่อเรียงลำดับ" role="presentation"
+          onpointerdown={(e) => gripDown(e, i)} onpointermove={gripMove} onpointerup={gripUp} onpointercancel={gripUp}>
           <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><circle cx="9" cy="6" r="1.4" /><circle cx="15" cy="6" r="1.4" /><circle cx="9" cy="12" r="1.4" /><circle cx="15" cy="12" r="1.4" /><circle cx="9" cy="18" r="1.4" /><circle cx="15" cy="18" r="1.4" /></svg>
         </span>
         <input
           class:bad={dupes[i]}
           value={items[i]}
+          placeholder="พิมพ์หัวข้อ (ว่างไว้ = ไม่บันทึก)"
           oninput={(e) => setItems(items.map((x, j) => (j === i ? e.currentTarget.value : x)))}
         />
-        <button class="del" title={items.length <= 1 ? 'ต้องมีอย่างน้อย 1 ข้อ' : 'ลบหัวข้อ'} aria-label="ลบหัวข้อ" disabled={items.length <= 1} onclick={() => removeItem(i)}>
+        <button class="del" title={!canRemove && items[i].trim() ? 'ต้องมีอย่างน้อย 1 ข้อ' : 'ลบหัวข้อ'} aria-label="ลบหัวข้อ"
+          disabled={!canRemove && !!items[i].trim()} onclick={() => removeItem(i)}>
           <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path d="M6 6l12 12 M18 6L6 18" /></svg>
         </button>
       </li>
     {/each}
-    <li class="add">
-      <span class="plus">+</span>
-      <input
-        bind:value={newItem}
-        placeholder="พิมพ์หัวข้อใหม่แล้วกด Enter"
-        onkeydown={(e) => { if (e.code === 'Enter' || e.code === 'NumpadEnter') { e.preventDefault(); e.stopPropagation(); addItem(); } }}
-      />
-    </li>
   </ul>
-  {#if dupes.some(Boolean)}<p class="err">มีหัวข้อที่ว่างหรือซ้ำกัน (กรอบแดง) ตอนบันทึกระบบจะตัดออกให้</p>{/if}
-  {#if newItem.trim() && items.some((x) => x.trim() === newItem.trim())}<p class="err">มีหัวข้อนี้อยู่แล้ว</p>{/if}
+  <button class="addbtn" title="เพิ่มหัวข้อ" aria-label="เพิ่มหัวข้อ" onclick={addItem}>
+    <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M12 5v14 M5 12h14" /></svg>
+  </button>
+  {#if dupes.some(Boolean)}<p class="err">มีหัวข้อซ้ำกัน (กรอบแดง) ตอนบันทึกจะเก็บไว้แค่ข้อเดียว</p>{/if}
   {#if module === 'fiveS'}<p class="hint">เปลี่ยนชื่อหัวข้อแล้ว คะแนนในบันทึกการตรวจเก่ายังผูกกับชื่อเดิม</p>{/if}
 </section>
 
@@ -251,9 +322,6 @@
   .t2 { left: var(--due); transform: translateX(-50%); color: #b91c1c; }
   .explain { margin: 12px 0 0; padding: 10px 12px; border-radius: 8px; background: #f8fafc; font-size: 13px; color: #334155; line-height: 1.6; }
   .explain b { font-weight: 600; margin: 0 2px; }
-  .legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 12px; color: #64748b; }
-  .legend span { display: flex; align-items: center; gap: 6px; }
-  .legend i { width: 10px; height: 10px; border-radius: 50%; }
   .lhead { display: flex; align-items: center; justify-content: space-between; }
   .lhead h3 { margin-bottom: 10px; }
   .link { border: 0; background: transparent; color: #2563eb; font: 13px system-ui, sans-serif; cursor: pointer; padding: 4px 6px; border-radius: 6px; white-space: nowrap; }
@@ -271,18 +339,45 @@
   .menu b { font-weight: 500; color: #0f172a; }
   .menu small { color: #94a3b8; }
   .items { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
-  .items li { display: grid; grid-template-columns: 22px minmax(0, 1fr) 30px; align-items: center; gap: 6px; border-radius: 8px; }
-  .items li.over { box-shadow: 0 -2px 0 #3b82f6; }
-  .items li.dragging { opacity: 0.4; }
-  .grip { display: grid; place-items: center; height: 32px; color: #cbd5e1; cursor: grab; }
+  .items li {
+    display: grid; grid-template-columns: 22px minmax(0, 1fr) 30px; align-items: center; gap: 6px;
+    border-radius: 8px; position: relative; transition: transform 0.16s ease; background: #fff;
+  }
+  .items.settling li { transition: none; }
+  .items li.dragging { transition: none; z-index: 2; box-shadow: 0 8px 20px rgba(15, 23, 42, 0.16); }
+  .items li.dragging .grip { cursor: grabbing; color: #2563eb; }
+  .grip { display: grid; place-items: center; height: 32px; color: #cbd5e1; cursor: grab; touch-action: none; user-select: none; }
   .grip:hover { color: #64748b; }
   .grip svg { fill: currentColor; }
   .del { width: 30px; height: 30px; display: grid; place-items: center; border: 0; background: transparent; color: #94a3b8; border-radius: 7px; cursor: pointer; }
   .del svg { fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }
   .del:hover:not(:disabled) { background: #fef2f2; color: #dc2626; }
   .del:disabled { opacity: 0.3; cursor: default; }
-  .add .plus { text-align: center; color: #94a3b8; font-size: 16px; }
-  .add input { border-style: dashed; grid-column: 2 / 4; }
+  .addbtn {
+    margin: 6px 0 0 28px; width: 32px; height: 32px; display: grid; place-items: center; border-radius: 8px;
+    border: 1px dashed #cbd5e1; background: #fff; color: #64748b; cursor: pointer;
+  }
+  .addbtn:hover { border-color: #3b82f6; color: #2563eb; background: #eff6ff; }
+  .addbtn svg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+  .scale { position: relative; height: 34px; margin: 18px 12px 0; cursor: pointer; touch-action: none; }
+  .track { position: absolute; left: 0; right: 0; top: 13px; height: 8px; border-radius: 4px; overflow: hidden; display: flex; }
+  .track span { height: 100%; }
+  .knob {
+    position: absolute; top: 3px; width: 28px; height: 28px; margin-left: -14px; border-radius: 50%;
+    background: #fff; border: 2px solid #334155; display: grid; place-items: center; padding: 0; cursor: grab;
+    box-shadow: 0 2px 6px rgba(15, 23, 42, 0.18); font: 600 11px system-ui, sans-serif; color: #0f172a;
+  }
+  .knob b { font-weight: 600; }
+  .knob.active { cursor: grabbing; border-color: #2563eb; box-shadow: 0 0 0 4px #dbeafe; }
+  .knob:focus-visible { outline: none; border-color: #2563eb; box-shadow: 0 0 0 4px #dbeafe; }
+  .scale-ticks { display: flex; justify-content: space-between; margin: 2px 0 12px; font-size: 11px; color: #94a3b8; }
+  .levels { display: flex; flex-direction: column; gap: 6px; }
+  .lv { display: grid; grid-template-columns: 12px 64px auto 1fr; align-items: center; gap: 8px; font-size: 13px; color: #334155; min-height: 34px; }
+  .lv i { width: 12px; height: 12px; border-radius: 50%; }
+  .lv b { font-weight: 600; }
+  .lv span { display: flex; align-items: center; gap: 6px; }
+  .lv input { width: 72px; padding: 5px 8px; }
+  .lv small { color: #94a3b8; font-size: 12px; }
   .err { margin: 8px 0 0; font-size: 12px; color: #dc2626; }
   .hint { margin: 8px 0 0; font-size: 12px; color: #94a3b8; }
 </style>

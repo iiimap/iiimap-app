@@ -96,7 +96,7 @@ export interface AuditRecord {
 
 export interface AuditConfig {
   fire: { intervalDays: number; dueSoonDays: number; checklist: string[] };
-  fiveS: { intervalDays: number; dueSoonDays: number; categories: string[]; passScore: number };
+  fiveS: { intervalDays: number; dueSoonDays: number; categories: string[]; passScore: number; goodScore: number };
 }
 
 export interface Site {

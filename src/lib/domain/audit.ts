@@ -62,10 +62,10 @@ export function fiveSPercent(scores: Record<string, number>, categories: string[
   return Math.round((sum / (categories.length * 5)) * 1000) / 10;
 }
 
-/** สีตามคะแนน 5ส: ≥ 80 เขียว, ≥ เกณฑ์ผ่าน เหลือง, ต่ำกว่าเกณฑ์ แดง */
-export function fiveSColor(percent: number | null, passScore: number): string {
+/** สีตามคะแนน 5ส: ≥ เกณฑ์ดี เขียว, ≥ เกณฑ์ผ่าน เหลือง, ต่ำกว่าเกณฑ์ผ่าน แดง */
+export function fiveSColor(percent: number | null, passScore: number, goodScore = 80): string {
   if (percent === null) return '#94a3b8';
-  if (percent >= Math.max(80, passScore)) return '#16a34a';
+  if (percent >= Math.max(goodScore, passScore)) return '#16a34a';
   if (percent >= passScore) return '#f59e0b';
   return '#dc2626';
 }

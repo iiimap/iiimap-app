@@ -17,7 +17,7 @@
 
   let { engine }: { engine?: MapEngine } = $props();
 
-  const VERSION = 'v0.34';
+  const VERSION = 'v0.35';
   const SAVE_TEXT = { saved: 'บันทึกแล้ว', saving: 'กำลังบันทึก…', error: 'บันทึกไม่สำเร็จ' };
 
   const TABS = [
@@ -298,7 +298,7 @@
           onclick={() => app.fiveSLineId && actions.openAuditForm('fiveS', app.fiveSLineId)} />
       </RGroup>
       <RGroup label="คะแนนเฉลี่ยล่าสุด">
-        <div class="bigstat" style="--c:{fiveSColor(fiveAvg, app.site.auditConfig.fiveS.passScore)}">
+        <div class="bigstat" style="--c:{fiveSColor(fiveAvg, app.site.auditConfig.fiveS.passScore, app.site.auditConfig.fiveS.goodScore)}">
           <b>{fiveAvg === null ? '–' : `${fiveAvg}%`}</b><small>{fiveSum.length} ไลน์</small>
         </div>
       </RGroup>

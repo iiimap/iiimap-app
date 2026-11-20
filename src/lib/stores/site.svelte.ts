@@ -929,7 +929,7 @@ export const actions = {
       name: app.site.name,
       width: app.site.width,
       depth: app.site.depth,
-      audit: structuredClone($state.snapshot(app.site.auditConfig)) as AuditConfig
+      audit: $state.snapshot(app.site.auditConfig) as AuditConfig
     };
   },
 
@@ -938,7 +938,8 @@ export const actions = {
     const err = siteSizeError(d.name, d.width, d.depth);
     if (err) return err;
     const clean = (list: string[]) => [...new Set(list.map((x) => x.trim()).filter(Boolean))];
-    const audit = structuredClone(d.audit);
+    // ร่างมาจาก $state (proxy) ใช้ structuredClone ตรงๆ ไม่ได้ ต้อง snapshot ก่อน
+    const audit = $state.snapshot(d.audit) as AuditConfig;
     audit.fire.checklist = clean(audit.fire.checklist);
     audit.fiveS.categories = clean(audit.fiveS.categories);
     if (!audit.fire.checklist.length || !audit.fiveS.categories.length) return 'รายการหัวข้อต้องมีอย่างน้อย 1 ข้อ';
@@ -946,7 +947,8 @@ export const actions = {
       m.intervalDays = Math.max(1, Math.round(m.intervalDays) || 1);
       m.dueSoonDays = Math.min(m.intervalDays - 1, Math.max(0, Math.round(m.dueSoonDays) || 0));
     }
-    audit.fiveS.passScore = Math.min(100, Math.max(0, Math.round(audit.fiveS.passScore)));
+    audit.fiveS.passScore = Math.min(100, Math.max(0, Math.round(audit.fiveS.passScore) || 0));
+    audit.fiveS.goodScore = Math.min(100, Math.max(audit.fiveS.passScore, Math.round(audit.fiveS.goodScore) || 0));
     checkpoint();
     app.site.name = d.name.trim();
     app.site.width = d.width;

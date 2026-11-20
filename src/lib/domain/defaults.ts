@@ -50,7 +50,8 @@ export const DEFAULT_AUDIT_CONFIG: AuditConfig = {
     intervalDays: 30,
     dueSoonDays: 7,
     categories: ['สะสาง', 'สะดวก', 'สะอาด', 'สุขลักษณะ', 'สร้างนิสัย'],
-    passScore: 60 // ผ่านเมื่อคะแนนรวม ≥ 60%
+    passScore: 60, // ผ่านเมื่อคะแนนรวม ≥ 60%
+    goodScore: 80 // ดี (สีเขียว) เมื่อ ≥ 80%
   }
 };
 

@@ -85,7 +85,7 @@
       .filter((l) => fiveS || app.frameLines.includes(l.id) || l.id === app.activeLineId)
       .map((l) => ({
         color: fiveS
-          ? fiveSColor(auditSummary(app.site, 'fiveS', l.id, clock.minute).last?.score ?? null, app.site.auditConfig.fiveS.passScore)
+          ? fiveSColor(auditSummary(app.site, 'fiveS', l.id, clock.minute).last?.score ?? null, app.site.auditConfig.fiveS.passScore, app.site.auditConfig.fiveS.goodScore)
           : l.color,
         strong: fiveS ? l.id === app.fiveSLineId : l.id === app.activeLineId,
         members: app.site.assets.filter((a) => a.lineId === l.id)

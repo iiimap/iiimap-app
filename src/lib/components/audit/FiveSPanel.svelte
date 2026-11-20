@@ -5,6 +5,7 @@
   import AuditHistory from './AuditHistory.svelte';
 
   let pass = $derived(app.site.auditConfig.fiveS.passScore);
+  let good = $derived(app.site.auditConfig.fiveS.goodScore);
 
   let rows = $derived(
     app.site.lines
@@ -26,7 +27,7 @@
 <aside class="panel">
   <header>
     <h3>5ส รายไลน์</h3>
-    {#if avg !== null}<span class="avg" style="--c:{fiveSColor(avg, pass)}">เฉลี่ย <b>{avg}%</b></span>{/if}
+    {#if avg !== null}<span class="avg" style="--c:{fiveSColor(avg, pass, good)}">เฉลี่ย <b>{avg}%</b></span>{/if}
   </header>
 
   <div class="scroll">
@@ -35,7 +36,7 @@
     {/if}
     {#each rows as r (r.l.id)}
       {@const score = r.s.last?.score ?? null}
-      <section class="card" class:open={app.fiveSLineId === r.l.id} style="--lc:{r.l.color}; --sc:{fiveSColor(score, pass)}">
+      <section class="card" class:open={app.fiveSLineId === r.l.id} style="--lc:{r.l.color}; --sc:{fiveSColor(score, pass, good)}">
         <button class="sum" onclick={() => pick(r.l.id)}>
           <span class="name">{r.l.name}</span>
           <span class="score">{score === null ? '–' : `${score}%`}</span>
